@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>練息場 健康數據追蹤</title>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif; background: #f5f5f7; color: #1d1d1f; min-height: 100vh; }
@@ -37,14 +38,31 @@ header { background: rgba(255,255,255,0.88); backdrop-filter: blur(20px); -webki
 .form-group input { border: 1px solid #d1d1d6; border-radius: 10px; padding: 9px 11px; font-size: 15px; font-family: inherit; outline: none; transition: border-color 0.2s; }
 .form-group input:focus { border-color: #E8753A; }
 .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
-.metric-box { background: #f5f5f7; border-radius: 12px; padding: 11px 13px; border: 1px solid transparent; transition: all 0.25s; }
-.metric-box.filled { background: #fff8f5; border-color: #ffd4bc; }
-.metric-box.verified { background: #f0fff6; border-color: #b0e8c8; }
+.metric-box { border-radius: 12px; padding: 11px 13px; border: 1px solid transparent; transition: all 0.25s; background: #f5f5f7; }
+.metric-box.green { background: #f0fff6; border-color: #b0e8c8; }
+.metric-box.yellow { background: #fffbf0; border-color: #f5d76e; }
+.metric-box.red { background: #fff2f2; border-color: #ffb3b3; }
 .metric-label { font-size: 11px; color: #8e8e93; font-weight: 500; margin-bottom: 3px; }
 .metric-value { font-size: 26px; font-weight: 600; color: #c7c7cc; min-height: 33px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.verify-dot { width: 7px; height: 7px; border-radius: 50%; background: #34c759; flex-shrink: 0; }
-.stress-badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
-.badge-normal { background: #d1f7e0; color: #1a7a40; } .badge-high { background: #ffecd6; color: #c05000; } .badge-severe { background: #ffd6d6; color: #b00020; }
+.metric-tag { font-size: 10px; padding: 2px 7px; border-radius: 20px; font-weight: 500; }
+.tag-green { background: #d1f7e0; color: #1a7a40; }
+.tag-yellow { background: #fef3cd; color: #856404; }
+.tag-red { background: #ffd6d6; color: #b00020; }
+.diagnosis-card { border-radius: 16px; padding: 18px; margin-bottom: 14px; border: 1.5px solid transparent; transition: all 0.3s; }
+.diagnosis-card.state-gold { background: linear-gradient(135deg, #fffbf0, #fff8e8); border-color: #f5d76e; }
+.diagnosis-card.state-red { background: linear-gradient(135deg, #fff2f2, #ffe8e8); border-color: #ffb3b3; }
+.diagnosis-card.state-warn { background: linear-gradient(135deg, #fff8f5, #ffeedd); border-color: #ffd4bc; }
+.diagnosis-card.state-fake { background: linear-gradient(135deg, #f5f5ff, #eeeeff); border-color: #c5c5f0; }
+.diagnosis-card.state-normal { background: linear-gradient(135deg, #f5f5f7, #efefef); border-color: #ddd; }
+.diagnosis-icon { font-size: 28px; margin-bottom: 8px; }
+.diagnosis-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.diagnosis-subtitle { font-size: 12px; color: #8e8e93; margin-bottom: 12px; }
+.diagnosis-obs { font-size: 14px; line-height: 1.7; margin-bottom: 12px; }
+.diagnosis-suggest { font-size: 13px; line-height: 1.8; padding: 12px; border-radius: 10px; background: rgba(255,255,255,0.7); white-space: pre-line; }
+.tone-toggle { display: flex; gap: 2px; background: #e8e8ed; border-radius: 9px; padding: 3px; margin-bottom: 14px; width: fit-content; }
+.tone-btn { padding: 5px 14px; border: none; background: none; border-radius: 7px; font-size: 12px; font-weight: 500; color: #6e6e73; cursor: pointer; font-family: inherit; transition: all 0.2s; }
+.tone-btn.active { background: white; color: #1d1d1f; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.radar-wrap { position: relative; width: 100%; max-width: 280px; margin: 0 auto; }
 .btn-save { width: 100%; background: #E8753A; color: white; border: none; border-radius: 980px; padding: 13px; font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; transition: all 0.2s; margin-top: 2px; }
 .btn-save:hover:not(:disabled) { background: #d4642a; }
 .btn-save:disabled { background: #c7c7cc; cursor: not-allowed; }
@@ -53,9 +71,8 @@ header { background: rgba(255,255,255,0.88); backdrop-filter: blur(20px); -webki
 .search-bar { display: flex; align-items: center; gap: 9px; background: white; border-radius: 12px; padding: 9px 13px; border: 0.5px solid rgba(0,0,0,0.07); margin-bottom: 14px; }
 .search-bar input { border: none; outline: none; font-size: 14px; font-family: inherit; flex: 1; background: none; }
 .record-card { background: white; border-radius: 14px; padding: 13px 15px; margin-bottom: 9px; border: 0.5px solid rgba(0,0,0,0.07); }
-.record-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 9px; }
 .record-email { font-size: 13px; font-weight: 600; }
-.record-meta { font-size: 11px; color: #8e8e93; margin-top: 2px; }
+.record-meta { font-size: 11px; color: #8e8e93; margin-top: 2px; margin-bottom: 9px; }
 .record-metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; }
 .rm { text-align: center; background: #f5f5f7; border-radius: 8px; padding: 7px 4px; }
 .rm-val { font-size: 16px; font-weight: 600; } .rm-label { font-size: 10px; color: #8e8e93; margin-top: 1px; line-height: 1.2; }
@@ -65,7 +82,7 @@ header { background: rgba(255,255,255,0.88); backdrop-filter: blur(20px); -webki
 .loading-msg { text-align: center; padding: 28px; color: #8e8e93; font-size: 13px; }
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: #1d1d1f; color: white; padding: 11px 22px; border-radius: 980px; font-size: 13px; font-weight: 500; transition: transform 0.3s cubic-bezier(0.4,0,0.2,1); z-index: 999; white-space: nowrap; pointer-events: none; }
 .toast.show { transform: translateX(-50%) translateY(0); }
-canvas { display: none; }
+canvas#canvas { display: none; }
 @media(max-width:480px){ .form-row{grid-template-columns:1fr;} .record-metrics{grid-template-columns:repeat(2,1fr);} }
 </style>
 </head>
@@ -102,7 +119,7 @@ canvas { display: none; }
       </div>
     </div>
     <div class="card">
-      <div class="card-title">識別結果 <span style="font-size:10px;color:#34c759;font-weight:400;margin-left:4px">● 綠點 = 位置驗證通過</span></div>
+      <div class="card-title">識別結果</div>
       <div class="metrics-grid">
         <div class="metric-box" id="box-stress"><div class="metric-label">壓力指數</div><div class="metric-value" id="v-stress">—</div></div>
         <div class="metric-box" id="box-emotion"><div class="metric-label">情緒反應靈活度</div><div class="metric-value" id="v-emotion">—</div></div>
@@ -112,8 +129,28 @@ canvas { display: none; }
       <p class="debug-toggle" onclick="toggleDebug()">▸ 顯示偵測細節</p>
       <div class="debug-box" id="debugBox"></div>
     </div>
+
+    <div id="diagnosisSection" style="display:none">
+      <div class="tone-toggle">
+        <button class="tone-btn active" onclick="switchTone('healing',this)">🌿 療癒風</button>
+        <button class="tone-btn" onclick="switchTone('medical',this)">🔬 專業風</button>
+      </div>
+      <div id="diagnosisCard" class="diagnosis-card">
+        <div class="diagnosis-icon" id="diagIcon"></div>
+        <div class="diagnosis-title" id="diagTitle"></div>
+        <div class="diagnosis-subtitle" id="diagSubtitle"></div>
+        <div class="diagnosis-obs" id="diagObs"></div>
+        <div class="diagnosis-suggest" id="diagSuggest"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">身心雷達圖</div>
+        <div class="radar-wrap"><canvas id="radarChart"></canvas></div>
+      </div>
+    </div>
+
     <button class="btn-save" id="saveBtn" onclick="saveRecord()" disabled>儲存至 Google Sheet</button>
   </div>
+
   <div id="panel-records" class="panel">
     <div class="search-bar">
       <span>🔍</span>
@@ -127,199 +164,299 @@ canvas { display: none; }
 
 <script>
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw03AOf-qKcaOaLyJVqs_KYQ-6-pD1rBwapDAxcCZwquz8FTkDodT6BEZ9xpGNbYayEuA/exec";
-let debugLog = [], allRecords = [], worker = null;
+
+const DIAGNOSES = {
+  red_alert: {
+    icon: '🔴', title: '紅色警戒', subtitle: '能量枯竭型', stateClass: 'state-red',
+    healing: {
+      obs: '你的身體現在像一支快沒電的手機，卻還在強撐著跑高耗能的程式。能量嚴重透支，神經系統卻還在緊繃運轉，這是身體在發出最緊急的求援訊號。',
+      suggest: '🛌 請立刻讓自己停下來休息，哪怕只是閉眼躺下 20 分鐘也好。\n☕ 今天先暫停咖啡因，讓腎上腺素有機會歸零。\n🌙 今晚爭取 8 小時以上的深眠，讓身體進行深度修復。'
+    },
+    medical: {
+      obs: '活力指數 < 1000（總自律神經功能低下）合併壓力指數 > 150（交感神經過度亢進），顯示個案處於能量負債狀態，生理資源已嚴重耗竭。',
+      suggest: '■ 立即執行強制休息，停止一切非必要活動。\n■ 暫停咖啡因及刺激性飲品攝取，減少交感神經過度激發。\n■ 建議進行 20 分鐘以上 NREM 深層睡眠恢復。\n■ 若連續三日持續本狀態，建議評估慢性壓力或睡眠障礙。'
+    }
+  },
+  no_brake: {
+    icon: '⚠️', title: '煞車失靈', subtitle: '高能耗損型', stateClass: 'state-warn',
+    healing: {
+      obs: '你的身體像一輛油門踩很深但煞車沒反應的車。雖然還有體力往前衝，但神經系統已經不知道怎麼關機了，長期下去很容易在某個時刻突然失速。',
+      suggest: '🌬️ 試試 4-7-8 呼吸法：吸氣 4 秒、屏氣 7 秒、呼氣 8 秒，做 3 個循環。\n📵 睡前一小時放下手機，讓大腦有機會進入降速模式。\n🧘 可以嘗試 10 分鐘的正念冥想，幫助副交感神經重新上線。'
+    },
+    medical: {
+      obs: '壓力指數 > 130（交感神經持續亢進）合併放鬆指數 < 25（副交感神經功能不足），呈現自律神經失衡——交感主導、副交感抑制。長期此狀態與睡眠障礙、免疫功能下降及心血管風險上升有關。',
+      suggest: '■ 執行副交感神經活化訓練：4-7-8 呼吸法或腹式深呼吸（每次 10 分鐘）。\n■ 建立睡前數位斷食習慣（睡前 60 分鐘停止藍光暴露）。\n■ 評估是否有慢性工作壓力，建議配合認知行為或正念介入。'
+    }
+  },
+  golden: {
+    icon: '✨', title: '黃金狀態', subtitle: '高能韌性型', stateClass: 'state-gold',
+    healing: {
+      obs: '恭喜你！今天的你身心狀態達到了黃金平衡——能量充足、情緒彈性佳、壓力也在理想範圍內。這是你的身體在說「我準備好了，放膽去做吧！」',
+      suggest: '🚀 適合今天進行重要決策、創意發想或高強度挑戰。\n💪 可以安排較高強度的運動或需要深度專注的工作。\n📌 記錄一下今天做了什麼讓自己達到這個狀態，那就是你的個人秘訣！'
+    },
+    medical: {
+      obs: '活力指數 > 2500（總自律神經功能優良）、情緒靈活度 > 50（自律神經調節能力佳）、壓力指數 < 100（交感神經平穩），三項指標均達優良門檻，生理儲備充足、應激適應能力良好。',
+      suggest: '■ 當前狀態適合執行高認知負荷任務及重要決策。\n■ 可進行中高強度有氧或阻力訓練，身體恢復能力處於高峰。\n■ 建議記錄當前生活型態作為個人基準線（Baseline）參考。'
+    }
+  },
+  fake_calm: {
+    icon: '🔮', title: '假性平穩', subtitle: '過勞前兆', stateClass: 'state-fake',
+    healing: {
+      obs: '表面上看起來不太緊張，但其實是因為能量已經低到「沒力氣緊張」了。這不是真的放鬆，而是身體在用沉默告訴你它已經很累了，需要被好好照顧。',
+      suggest: '🍽️ 注意今天的營養補充，特別是優質蛋白質和複合碳水化合物。\n😴 今晚優先保證睡眠品質，而不只是睡眠時數。\n🚶 避免劇烈運動，可以選擇輕度散步或伸展代替。'
+    },
+    medical: {
+      obs: '壓力指數 < 70（交感神經活性低）但活力指數 < 1200 合併放鬆指數 < 25，低壓力係因能量耗竭導致神經反應鈍化，並非真正生理放鬆，屬過勞前驅期表現。',
+      suggest: '■ 執行預防性休息，避免進一步消耗生理儲備。\n■ 補充均衡營養，優先攝取優質蛋白質及複合碳水化合物。\n■ 暫緩高強度運動，以輕度有氧（走路、伸展）代替。\n■ 監測後續 3-5 日數據，若持續低迷建議評估慢性疲勞或睡眠品質。'
+    }
+  },
+  normal: {
+    icon: '🌱', title: '一般狀態', subtitle: '個別指標分析', stateClass: 'state-normal',
+    healing: {
+      obs: '你的身體今天處於一個平穩的中間地帶，沒有特別亮眼，也沒有需要緊急處理的警訊。就像一棵正在生長的小樹，好好澆水就夠了。',
+      suggest: '💧 維持規律作息，今天就做好基本功：好好吃飯、好好睡覺。\n🎯 可以針對偏低的指標做一點小小的改善行動。\n📊 多累積幾次數據，你會更了解自己的身體節律。'
+    },
+    medical: {
+      obs: '當前數值未達特定複合型態診斷門檻，各指標呈獨立分布。建議依各項指標個別區間評估，並持續累積個人基準線數據（建議至少 7 次測量）以利趨勢分析。',
+      suggest: '■ 針對各指標個別評分結果進行對應的生活型態調整。\n■ 持續記錄以建立個人基準線，單次數據參考價值有限。\n■ 建議每週定期測量（同時段、同狀態），以提高數據可比性。'
+    }
+  }
+};
+
+function getMetricLevel(key, val) {
+  const v = parseInt(val)||0;
+  if (key==='stress') { if(v<=100) return {level:'green',tag:'正常'}; if(v<=150) return {level:'yellow',tag:'偏高'}; return {level:'red',tag:'嚴重'}; }
+  if (key==='emotion') { if(v>=46) return {level:'green',tag:'很好'}; if(v>=30) return {level:'yellow',tag:'普通'}; return {level:'red',tag:'稍低'}; }
+  if (key==='relax') { if(v>=41) return {level:'green',tag:'很好'}; if(v>=25) return {level:'yellow',tag:'普通'}; return {level:'red',tag:'稍低'}; }
+  if (key==='vitality') { if(v>=2001) return {level:'green',tag:'很好'}; if(v>=1000) return {level:'yellow',tag:'普通'}; return {level:'red',tag:'稍低'}; }
+  return {level:'',tag:''};
+}
+
+function diagnose(stress, emotion, relax, vitality) {
+  const s=parseInt(stress)||0, e=parseInt(emotion)||0, r=parseInt(relax)||0, v=parseInt(vitality)||0;
+  if (v<1000 && s>150) return 'red_alert';
+  if (s>130 && r<25) return 'no_brake';
+  if (v>2500 && e>50 && s<100) return 'golden';
+  if (s<70 && v<1200 && r<25) return 'fake_calm';
+  return 'normal';
+}
+
+let currentTone = 'healing', currentDiagKey = '', radarChartInstance = null;
+
+function renderDiagnosis(results) {
+  const {stress,emotion,relax,vitality} = results;
+  currentDiagKey = diagnose(stress,emotion,relax,vitality);
+  updateDiagnosisDisplay();
+  const s=parseInt(stress)||0, e=parseInt(emotion)||0, r=parseInt(relax)||0, v=parseInt(vitality)||0;
+  const stressScore = Math.max(0,Math.min(100,Math.round((1-s/300)*100)));
+  const emotionScore = Math.max(0,Math.min(100,Math.round(e)));
+  const relaxScore = Math.max(0,Math.min(100,Math.round(r)));
+  const vitalityScore = Math.max(0,Math.min(100,Math.round(v/5000*100)));
+  const ctx = document.getElementById('radarChart').getContext('2d');
+  if (radarChartInstance) radarChartInstance.destroy();
+  radarChartInstance = new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: ['壓力平穩度','情緒靈活度','放鬆指數','活力指數'],
+      datasets: [{
+        data: [stressScore,emotionScore,relaxScore,vitalityScore],
+        backgroundColor: 'rgba(232,117,58,0.15)',
+        borderColor: '#E8753A', borderWidth: 2,
+        pointBackgroundColor: '#E8753A', pointRadius: 4,
+      }]
+    },
+    options: {
+      scales: { r: { min:0, max:100, ticks:{display:false}, grid:{color:'rgba(0,0,0,0.08)'}, pointLabels:{font:{size:12}} } },
+      plugins: { legend: {display:false} },
+      animation: { duration:600 }
+    }
+  });
+  document.getElementById('diagnosisSection').style.display = 'block';
+}
+
+function updateDiagnosisDisplay() {
+  const d = DIAGNOSES[currentDiagKey];
+  const tone = d[currentTone];
+  const card = document.getElementById('diagnosisCard');
+  card.className = 'diagnosis-card ' + d.stateClass;
+  document.getElementById('diagIcon').textContent = d.icon;
+  document.getElementById('diagTitle').textContent = d.title;
+  document.getElementById('diagSubtitle').textContent = d.subtitle;
+  document.getElementById('diagObs').textContent = tone.obs;
+  document.getElementById('diagSuggest').textContent = tone.suggest;
+}
+
+function switchTone(tone, el) {
+  currentTone = tone;
+  document.querySelectorAll('.tone-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  if (currentDiagKey) updateDiagnosisDisplay();
+}
+
+let debugLog=[], allRecords=[], worker=null;
 document.getElementById('dateInput').value = new Date().toISOString().split('T')[0];
 
 async function initWorker() {
   if (worker) return worker;
-  worker = await Tesseract.createWorker('eng', 1);
-  await worker.setParameters({ tessedit_char_whitelist:'0123456789', tessedit_pageseg_mode:'7' });
+  worker = await Tesseract.createWorker('eng',1);
+  await worker.setParameters({tessedit_char_whitelist:'0123456789',tessedit_pageseg_mode:'7'});
   return worker;
 }
 
-const dropzone = document.getElementById('dropzone');
-dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
-dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('dragover'); if(e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]); });
-function handleFile(e) { if(e.target.files[0]) processFile(e.target.files[0]); }
+const dropzone=document.getElementById('dropzone');
+dropzone.addEventListener('dragover',e=>{e.preventDefault();dropzone.classList.add('dragover');});
+dropzone.addEventListener('dragleave',()=>dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop',e=>{e.preventDefault();dropzone.classList.remove('dragover');if(e.dataTransfer.files[0])processFile(e.dataTransfer.files[0]);});
+function handleFile(e){if(e.target.files[0])processFile(e.target.files[0]);}
 
 function processFile(file) {
-  const reader = new FileReader();
-  reader.onload = ev => {
-    document.getElementById('imgPreview').src = ev.target.result;
-    document.getElementById('imgPreview').style.display = 'block';
-    const img = new Image();
-    img.onload = () => analyze(img);
-    img.src = ev.target.result;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    document.getElementById('imgPreview').src=ev.target.result;
+    document.getElementById('imgPreview').style.display='block';
+    const img=new Image();
+    img.onload=()=>analyze(img);
+    img.src=ev.target.result;
   };
   reader.readAsDataURL(file);
 }
 
 async function analyze(img) {
-  setStatus('loading', '載入辨識引擎...');
-  setProgress(0, true);
-  debugLog = [];
-
-  const canvas = document.getElementById('canvas');
-  canvas.width = img.width; canvas.height = img.height;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(img, 0, 0);
-  const W = img.width, H = img.height;
+  setStatus('loading','載入辨識引擎...');
+  setProgress(0,true);
+  debugLog=[];
+  const canvas=document.getElementById('canvas');
+  canvas.width=img.width; canvas.height=img.height;
+  const ctx=canvas.getContext('2d');
+  ctx.drawImage(img,0,0);
+  const W=img.width,H=img.height;
   debugLog.push(`圖片尺寸: ${W} x ${H}`);
-
-  try { await initWorker(); } catch(e) {
-    setStatus('error', 'Tesseract 載入失敗，請確認網路連線');
-    setProgress(0, false); return;
-  }
-
-  setStatus('loading', '掃描數值位置...');
+  try{await initWorker();}catch(e){setStatus('error','Tesseract 載入失敗');setProgress(0,false);return;}
+  setStatus('loading','掃描數值位置...');
   setProgress(10);
-
-  // ── 掃描右側灰色數字行 ──
-  // 數值都在右側 70% 以後，灰色文字（RGB 接近、亮度中等）
-  const x1 = Math.floor(W * 0.70);
-  const fullData = ctx.getImageData(x1, 0, W - x1, H).data;
-  const pw = W - x1;
-
-  const rowGray = new Int32Array(H);
-  for (let y = 0; y < H; y++) {
-    let cnt = 0;
-    for (let x = 0; x < pw; x++) {
-      const i = (y * pw + x) * 4;
-      const r = fullData[i], g = fullData[i+1], b = fullData[i+2];
-      const isGray = Math.abs(r-g) < 30 && Math.abs(g-b) < 30 && r < 175 && r > 45;
-      if (isGray) cnt++;
+  const x1=Math.floor(W*0.70);
+  const fullData=ctx.getImageData(x1,0,W-x1,H).data;
+  const pw=W-x1;
+  const rowGray=new Int32Array(H);
+  for(let y=0;y<H;y++){
+    let cnt=0;
+    for(let x=0;x<pw;x++){
+      const i=(y*pw+x)*4;
+      const r=fullData[i],g=fullData[i+1],b=fullData[i+2];
+      if(Math.abs(r-g)<30&&Math.abs(g-b)<30&&r<175&&r>45)cnt++;
     }
-    rowGray[y] = cnt;
+    rowGray[y]=cnt;
   }
-
-  // 合併灰色數字行群組（gap=5px）
-  const groups = mergeRows(rowGray, H, 4, 5, 15);
+  const groups=mergeRows(rowGray,H,4,5,15);
   debugLog.push(`\n掃到 ${groups.length} 個數字群組:`);
-  groups.forEach((g,i) => debugLog.push(`  #${i+1}: y=${g[0]}-${g[1]} (${(g[0]/H*100).toFixed(1)}%) 高=${g[1]-g[0]}px`));
-
-  // ── 找四個目標群組 ──
-  // 壓力指數：y < 35% 的第一個高度≥15px群組
-  // 情緒/放鬆/活力：y > 50% 的連續三個高度≥15px群組
-  const bigGroups = groups.filter(g => g[1]-g[0] >= 15);
-  const stressGroup  = bigGroups.find(g => g[0] > H * 0.10 && g[0] < H * 0.40);
-  const lowerGroups  = bigGroups.filter(g => g[0] > H * 0.55 && (g[1]-g[0]) >= 20);
-
+  groups.forEach((g,i)=>debugLog.push(`  #${i+1}: y=${g[0]}-${g[1]} (${(g[0]/H*100).toFixed(1)}%) 高=${g[1]-g[0]}px`));
+  const bigGroups=groups.filter(g=>g[1]-g[0]>=15);
+  const stressGroup=bigGroups.find(g=>g[0]>H*0.10&&g[0]<H*0.40);
+  const lowerGroups=bigGroups.filter(g=>g[0]>H*0.55&&(g[1]-g[0])>=20);
   debugLog.push(`\n篩選後:`);
-  debugLog.push(`  壓力指數: ${stressGroup ? `y=${stressGroup[0]}-${stressGroup[1]}` : '未找到'}`);
+  debugLog.push(`  壓力指數: ${stressGroup?`y=${stressGroup[0]}-${stressGroup[1]}`:'未找到'}`);
   debugLog.push(`  下方群組數: ${lowerGroups.length}`);
-  lowerGroups.forEach((g,i) => debugLog.push(`    [${i+1}] y=${g[0]}-${g[1]} (${(g[0]/H*100).toFixed(1)}%)`));
-
-  if (!stressGroup || lowerGroups.length < 3) {
-    setStatus('error', `找到壓力:${stressGroup?'✓':'✗'} 下方群組:${lowerGroups.length}/3，請上傳完整截圖`);
-    document.getElementById('debugBox').textContent = debugLog.join('\n');
-    setProgress(0, false); return;
+  lowerGroups.forEach((g,i)=>debugLog.push(`    [${i+1}] y=${g[0]}-${g[1]} (${(g[0]/H*100).toFixed(1)}%)`));
+  if(!stressGroup||lowerGroups.length<3){
+    setStatus('error',`找到壓力:${stressGroup?'✓':'✗'} 下方群組:${lowerGroups.length}/3，請上傳完整截圖`);
+    document.getElementById('debugBox').textContent=debugLog.join('\n');
+    setProgress(0,false);return;
   }
-
-  const crops = [
-    { key:'stress',   label:'壓力指數',      g: stressGroup },
-    { key:'emotion',  label:'情緒反應靈活度', g: lowerGroups[0] },
-    { key:'relax',    label:'放鬆指數',       g: lowerGroups[1] },
-    { key:'vitality', label:'活力指數',       g: lowerGroups[2] },
+  const crops=[
+    {key:'stress',label:'壓力指數',g:stressGroup},
+    {key:'emotion',label:'情緒反應靈活度',g:lowerGroups[0]},
+    {key:'relax',label:'放鬆指數',g:lowerGroups[1]},
+    {key:'vitality',label:'活力指數',g:lowerGroups[2]},
   ];
-
-  const results = {};
-  let found = 0;
-
-  for (let i = 0; i < crops.length; i++) {
-    const { key, label, g } = crops[i];
-    setStatus('loading', `辨識 ${label} (${i+1}/4)...`);
-    setProgress(15 + i * 20);
-
-    const pad = Math.max(4, Math.floor(H * 0.003));
-    const cy1 = Math.max(0, g[0] - pad);
-    const cy2 = Math.min(H, g[1] + pad);
+  const results={};let found=0;
+  for(let i=0;i<crops.length;i++){
+    const{key,label,g}=crops[i];
+    setStatus('loading',`辨識 ${label} (${i+1}/4)...`);
+    setProgress(15+i*20);
+    const pad=Math.max(4,Math.floor(H*0.003));
+    const cy1=Math.max(0,g[0]-pad),cy2=Math.min(H,g[1]+pad);
     debugLog.push(`\n[${label}] y=${cy1}-${cy2} 高=${cy2-cy1}px`);
-
-    const cc = makeCropCanvas(canvas, x1, cy1, W-x1, cy2-cy1, 5);
-
-    try {
-      const { data: { text } } = await worker.recognize(cc);
-      const num = text.replace(/[^0-9]/g, '').trim();
+    const cc=makeCropCanvas(canvas,x1,cy1,W-x1,cy2-cy1,5);
+    try{
+      const{data:{text}}=await worker.recognize(cc);
+      const num=text.replace(/[^0-9]/g,'').trim();
       debugLog.push(`  Tesseract: "${text.trim()}" → "${num}"`);
-      if (num) { results[key] = num; found++; }
-    } catch(e) { debugLog.push(`  錯誤: ${e.message}`); }
+      if(num){results[key]=num;found++;}
+    }catch(e){debugLog.push(`  錯誤: ${e.message}`);}
   }
-
   setProgress(100);
-  setTimeout(() => setProgress(0, false), 600);
-  document.getElementById('debugBox').textContent = debugLog.join('\n');
+  setTimeout(()=>setProgress(0,false),600);
+  document.getElementById('debugBox').textContent=debugLog.join('\n');
   renderMetrics(results);
-
-  if (found >= 3) {
-    setStatus('ok', `識別完成 ${found}/4 項${found<4?' (可手動補填)':''}`);
-    document.getElementById('saveBtn').disabled = false;
-  } else if (found > 0) {
-    setStatus('warn', `識別到 ${found}/4 項，請手動補填`);
-    document.getElementById('saveBtn').disabled = false;
-  } else {
-    setStatus('error', '識別失敗，請展開偵測細節');
+  if(found>=3){
+    setStatus('ok',`識別完成 ${found}/4 項${found<4?' (可手動補填)':''}`);
+    document.getElementById('saveBtn').disabled=false;
+    if(found===4) renderDiagnosis(results);
+  }else if(found>0){
+    setStatus('warn',`識別到 ${found}/4 項，請手動補填`);
+    document.getElementById('saveBtn').disabled=false;
+  }else{
+    setStatus('error','識別失敗，請展開偵測細節');
   }
 }
 
-function mergeRows(rowGray, H, minPx, gap, minH) {
-  let raw=[], inBlock=false, start=0;
-  for (let y=0;y<H;y++) {
-    if(rowGray[y]>=minPx){ if(!inBlock){inBlock=true;start=y;} }
-    else{ if(inBlock){inBlock=false;raw.push([start,y-1]);} }
+function mergeRows(rowGray,H,minPx,gap,minH){
+  let raw=[],inBlock=false,start=0;
+  for(let y=0;y<H;y++){
+    if(rowGray[y]>=minPx){if(!inBlock){inBlock=true;start=y;}}
+    else{if(inBlock){inBlock=false;raw.push([start,y-1]);}}
   }
-  if(inBlock) raw.push([start,H-1]);
+  if(inBlock)raw.push([start,H-1]);
   const merged=[];
   for(const b of raw){
-    if(merged.length && b[0]-merged[merged.length-1][1]<gap) merged[merged.length-1][1]=b[1];
+    if(merged.length&&b[0]-merged[merged.length-1][1]<gap)merged[merged.length-1][1]=b[1];
     else merged.push([...b]);
   }
   return merged.filter(b=>b[1]-b[0]>=minH);
 }
 
-function makeCropCanvas(src, x, y, w, h, scale) {
-  const c = document.createElement('canvas');
-  c.width = w*scale; c.height = h*scale;
-  const ctx = c.getContext('2d');
-  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(src, x, y, w, h, 0, 0, c.width, c.height);
-  const px = ctx.getImageData(0, 0, c.width, c.height);
-  const d = px.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const gray = d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114;
-    const val = gray > 150 ? 255 : 0;
-    d[i] = d[i+1] = d[i+2] = val;
+function makeCropCanvas(src,x,y,w,h,scale){
+  const c=document.createElement('canvas');
+  c.width=w*scale;c.height=h*scale;
+  const ctx=c.getContext('2d');
+  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+  ctx.drawImage(src,x,y,w,h,0,0,c.width,c.height);
+  const px=ctx.getImageData(0,0,c.width,c.height);
+  const d=px.data;
+  for(let i=0;i<d.length;i+=4){
+    const gray=d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114;
+    const val=gray>150?255:0;
+    d[i]=d[i+1]=d[i+2]=val;
   }
-  ctx.putImageData(px, 0, 0);
+  ctx.putImageData(px,0,0);
   return c;
 }
 
-function renderMetrics(results) {
+function renderMetrics(results){
   const colors={stress:'#E8753A',emotion:'#185FA5',relax:'#0F6E56',vitality:'#993556'};
-  for(const [key,value] of Object.entries(results)){
+  for(const[key,value]of Object.entries(results)){
     const el=document.getElementById('v-'+key);
     const box=document.getElementById('box-'+key);
+    const{level,tag}=getMetricLevel(key,value);
     const fs=value.length>=4?'20px':'26px';
-    el.innerHTML=`<span style="color:${colors[key]};font-size:${fs}">${value}</span><span class="verify-dot"></span>`;
-    box.className='metric-box verified';
+    el.innerHTML=`<span style="color:${colors[key]};font-size:${fs}">${value}</span> <span class="metric-tag tag-${level}">${tag}</span>`;
+    box.className=`metric-box ${level}`;
   }
-
 }
 
-async function saveRecord() {
+async function saveRecord(){
   const email=document.getElementById('emailInput').value.trim();
   const date=document.getElementById('dateInput').value;
   if(!email){showToast('請填入 Email');return;}
   const btn=document.getElementById('saveBtn');
-  btn.disabled=true; btn.textContent='儲存中...';
+  btn.disabled=true;btn.textContent='儲存中...';
   const getNum=id=>{const s=document.getElementById(id).querySelector('span');return s?parseInt(s.textContent)||'':'';};
-  const badge=document.getElementById('v-stress').querySelector('.stress-badge');
-  try {
+  try{
     await fetch(SCRIPT_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({email,date,stress:getNum('v-stress'),stressLevel:badge?badge.textContent:'',emotion:getNum('v-emotion'),relax:getNum('v-relax'),vitality:getNum('v-vitality'),bpm:''})});
+      body:JSON.stringify({email,date,stress:getNum('v-stress'),stressLevel:'',emotion:getNum('v-emotion'),relax:getNum('v-relax'),vitality:getNum('v-vitality'),bpm:''})});
     showToast('✓ 已儲存至 Google Sheet');
-  } catch(e){showToast('儲存失敗，請確認網路');}
-  btn.disabled=false; btn.textContent='儲存至 Google Sheet';
+  }catch(e){showToast('儲存失敗');}
+  btn.disabled=false;btn.textContent='儲存至 Google Sheet';
 }
 
 function switchTab(tab,el){
@@ -327,7 +464,7 @@ function switchTab(tab,el){
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('panel-'+tab).classList.add('active');
-  if(tab==='records') loadRecords();
+  if(tab==='records')loadRecords();
 }
 
 async function loadRecords(){
@@ -338,7 +475,7 @@ async function loadRecords(){
     allRecords=data.records||[];
     renderRecords(allRecords);
   }catch(e){
-    document.getElementById('recordsList').innerHTML='<div class="empty-state"><div class="ico">⚠️</div><p>無法載入，請確認 Apps Script 設定</p></div>';
+    document.getElementById('recordsList').innerHTML='<div class="empty-state"><div class="ico">⚠️</div><p>無法載入</p></div>';
   }
 }
 
@@ -350,15 +487,10 @@ function filterRecords(){
 function renderRecords(records){
   const el=document.getElementById('recordsList');
   if(!records.length){el.innerHTML='<div class="empty-state"><div class="ico">📋</div><p>尚無紀錄</p></div>';return;}
-  const lc=l=>l==='正常'?'badge-normal':l==='偏高'?'badge-high':'badge-severe';
   el.innerHTML=records.map(r=>`
     <div class="record-card">
-      <div class="record-header">
-        <div>
-          <div class="record-email">${r['Email']||'未知'}</div>
-          <div class="record-meta">${r['日期']||''}</div>
-        </div>
-      </div>
+      <div class="record-email">${r['Email']||'未知'}</div>
+      <div class="record-meta">${r['日期']||''}</div>
       <div class="record-metrics">
         <div class="rm"><div class="rm-val c-stress">${r['壓力指數']||'—'}</div><div class="rm-label">壓力指數</div></div>
         <div class="rm"><div class="rm-val c-emotion">${r['情緒反應靈活度']||'—'}</div><div class="rm-label">情緒靈活度</div></div>
@@ -374,24 +506,21 @@ function setStatus(type,msg){
   t.textContent=msg;
   t.style.color=type==='ok'?'#1a7a40':type==='error'?'#b00020':type==='warn'?'#c05000':'#8e8e93';
 }
-
 function setProgress(pct,show=true){
   document.getElementById('progressBar').style.display=show?'block':'none';
   document.getElementById('progressFill').style.width=pct+'%';
 }
-
 function toggleDebug(){
   const b=document.getElementById('debugBox');
   b.style.display=b.style.display==='block'?'none':'block';
 }
-
 function showToast(msg){
   const t=document.getElementById('toast');
-  t.textContent=msg; t.classList.add('show');
+  t.textContent=msg;t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'),2800);
 }
 
-window.addEventListener('load', () => { initWorker().catch(()=>{}); });
+window.addEventListener('load',()=>{initWorker().catch(()=>{});});
 </script>
 </body>
 </html>
