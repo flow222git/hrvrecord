@@ -416,9 +416,17 @@ function makeCropCanvas(src,x,y,w,h,scale){
   ctx.drawImage(src,x,y,w,h,0,0,c.width,c.height);
   const px=ctx.getImageData(0,0,c.width,c.height);
   const d=px.data;
+  // 先收集所有灰階值，計算自適應閾值（取中位數偏暗側）
+  const grays=[];
+  for(let i=0;i<d.length;i+=4){
+    grays.push(d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114);
+  }
+  grays.sort((a,b)=>a-b);
+  // 用40%分位數作為閾值：比背景暗的像素當數字
+  const thresh=grays[Math.floor(grays.length*0.40)];
   for(let i=0;i<d.length;i+=4){
     const gray=d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114;
-    const val=gray>145?255:0;
+    const val=gray>thresh?255:0;
     d[i]=d[i+1]=d[i+2]=val;
   }
   ctx.putImageData(px,0,0);
