@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>練息場 健康數據追蹤</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif; background: #f5f5f7; color: #1d1d1f; min-height: 100vh; }
+header { background: rgba(255,255,255,0.88); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 0.5px solid rgba(0,0,0,0.1); padding: 0 20px; position: sticky; top: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; height: 54px; }
+.logo { font-size: 16px; font-weight: 600; }
+.logo span { color: #E8753A; }
+.tabs { display: flex; gap: 2px; background: #e8e8ed; border-radius: 9px; padding: 3px; }
+.tab-btn { padding: 5px 14px; border: none; background: none; border-radius: 7px; font-size: 13px; font-weight: 500; color: #6e6e73; cursor: pointer; transition: all 0.2s; font-family: inherit; }
+.tab-btn.active { background: white; color: #1d1d1f; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.container { max-width: 660px; margin: 0 auto; padding: 20px 14px; }
+.panel { display: none; } .panel.active { display: block; }
+.card { background: white; border-radius: 16px; padding: 18px; margin-bottom: 14px; border: 0.5px solid rgba(0,0,0,0.07); }
+.card-title { font-size: 11px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 13px; }
+.upload-zone { border: 1.5px dashed #c7c7cc; border-radius: 12px; padding: 28px 16px; text-align: center; cursor: pointer; transition: all 0.25s; background: #fafafa; position: relative; }
+.upload-zone:hover { border-color: #E8753A; background: #fff8f5; }
+.upload-zone.dragover { border-color: #E8753A; background: #fff3ed; }
+.upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.upload-icon { font-size: 36px; margin-bottom: 8px; }
+.upload-zone p { font-size: 14px; font-weight: 500; }
+.upload-zone small { font-size: 12px; color: #8e8e93; margin-top: 3px; display: block; }
+#imgPreview { width: 100%; border-radius: 10px; margin-top: 12px; display: none; max-height: 200px; object-fit: contain; background: #f5f5f7; }
+.ocr-status { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 24px; margin-top: 10px; font-size: 13px; color: #8e8e93; }
+.spinner { width: 13px; height: 13px; border: 2px solid #e5e5ea; border-top-color: #E8753A; border-radius: 50%; animation: spin 0.7s linear infinite; display: none; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.progress-bar { height: 4px; background: #e5e5ea; border-radius: 2px; margin-top: 8px; overflow: hidden; display: none; }
+.progress-fill { height: 100%; background: #E8753A; border-radius: 2px; transition: width 0.3s ease; width: 0%; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.form-group label { font-size: 11px; font-weight: 600; color: #8e8e93; }
+.form-group input { border: 1px solid #d1d1d6; border-radius: 10px; padding: 9px 11px; font-size: 15px; font-family: inherit; outline: none; transition: border-color 0.2s; }
+.form-group input:focus { border-color: #E8753A; }
+.metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.metric-box { background: #f5f5f7; border-radius: 12px; padding: 11px 13px; border: 1px solid transparent; transition: all 0.25s; }
+.metric-box.filled { background: #fff8f5; border-color: #ffd4bc; }
+.metric-box.verified { background: #f0fff6; border-color: #b0e8c8; }
+.metric-label { font-size: 11px; color: #8e8e93; font-weight: 500; margin-bottom: 3px; }
+.metric-value { font-size: 26px; font-weight: 600; color: #c7c7cc; min-height: 33px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.verify-dot { width: 7px; height: 7px; border-radius: 50%; background: #34c759; flex-shrink: 0; }
+.stress-badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+.badge-normal { background: #d1f7e0; color: #1a7a40; } .badge-high { background: #ffecd6; color: #c05000; } .badge-severe { background: #ffd6d6; color: #b00020; }
+.btn-save { width: 100%; background: #E8753A; color: white; border: none; border-radius: 980px; padding: 13px; font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; transition: all 0.2s; margin-top: 2px; }
+.btn-save:hover:not(:disabled) { background: #d4642a; }
+.btn-save:disabled { background: #c7c7cc; cursor: not-allowed; }
+.debug-toggle { font-size: 12px; color: #8e8e93; text-align: center; margin-top: 10px; cursor: pointer; }
+.debug-box { background: #f5f5f7; border-radius: 10px; padding: 12px; margin-top: 8px; display: none; font-size: 11px; font-family: monospace; color: #3a3a3c; line-height: 1.7; white-space: pre-wrap; word-break: break-all; }
+.search-bar { display: flex; align-items: center; gap: 9px; background: white; border-radius: 12px; padding: 9px 13px; border: 0.5px solid rgba(0,0,0,0.07); margin-bottom: 14px; }
+.search-bar input { border: none; outline: none; font-size: 14px; font-family: inherit; flex: 1; background: none; }
+.record-card { background: white; border-radius: 14px; padding: 13px 15px; margin-bottom: 9px; border: 0.5px solid rgba(0,0,0,0.07); }
+.record-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 9px; }
+.record-email { font-size: 13px; font-weight: 600; }
+.record-meta { font-size: 11px; color: #8e8e93; margin-top: 2px; }
+.record-metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; }
+.rm { text-align: center; background: #f5f5f7; border-radius: 8px; padding: 7px 4px; }
+.rm-val { font-size: 16px; font-weight: 600; } .rm-label { font-size: 10px; color: #8e8e93; margin-top: 1px; line-height: 1.2; }
+.c-stress{color:#E8753A;} .c-emotion{color:#185FA5;} .c-relax{color:#0F6E56;} .c-vitality{color:#993556;}
+.empty-state { text-align: center; padding: 40px; color: #8e8e93; }
+.empty-state .ico { font-size: 36px; margin-bottom: 10px; }
+.loading-msg { text-align: center; padding: 28px; color: #8e8e93; font-size: 13px; }
+.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: #1d1d1f; color: white; padding: 11px 22px; border-radius: 980px; font-size: 13px; font-weight: 500; transition: transform 0.3s cubic-bezier(0.4,0,0.2,1); z-index: 999; white-space: nowrap; pointer-events: none; }
+.toast.show { transform: translateX(-50%) translateY(0); }
+canvas { display: none; }
+@media(max-width:480px){ .form-row{grid-template-columns:1fr;} .record-metrics{grid-template-columns:repeat(2,1fr);} }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">練息場 <span>健康追蹤</span></div>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('upload',this)">上傳紀錄</button>
+    <button class="tab-btn" onclick="switchTab('records',this)">歷史紀錄</button>
+  </div>
+</header>
+<div class="container">
+  <div id="panel-upload" class="panel active">
+    <div class="card">
+      <div class="card-title">上傳量測截圖</div>
+      <div class="upload-zone" id="dropzone">
+        <input type="file" id="fileInput" accept="image/*" onchange="handleFile(event)">
+        <div class="upload-icon">📸</div>
+        <p>點擊或拖曳截圖至此</p>
+        <small>本機辨識，不傳送任何資料</small>
+      </div>
+      <img id="imgPreview" alt="截圖預覽">
+      <div class="ocr-status">
+        <div class="spinner" id="spinner"></div>
+        <span id="ocrText">上傳截圖後自動識別數值</span>
+      </div>
+      <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">使用者資訊</div>
+      <div class="form-row">
+        <div class="form-group"><label>EMAIL</label><input type="email" id="emailInput" placeholder="user@example.com"></div>
+        <div class="form-group"><label>量測日期</label><input type="date" id="dateInput"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">識別結果 <span style="font-size:10px;color:#34c759;font-weight:400;margin-left:4px">● 綠點 = 位置驗證通過</span></div>
+      <div class="metrics-grid">
+        <div class="metric-box" id="box-stress"><div class="metric-label">壓力指數</div><div class="metric-value" id="v-stress">—</div></div>
+        <div class="metric-box" id="box-emotion"><div class="metric-label">情緒反應靈活度</div><div class="metric-value" id="v-emotion">—</div></div>
+        <div class="metric-box" id="box-relax"><div class="metric-label">放鬆指數</div><div class="metric-value" id="v-relax">—</div></div>
+        <div class="metric-box" id="box-vitality"><div class="metric-label">活力指數</div><div class="metric-value" id="v-vitality">—</div></div>
+      </div>
+      <p class="debug-toggle" onclick="toggleDebug()">▸ 顯示偵測細節</p>
+      <div class="debug-box" id="debugBox"></div>
+    </div>
+    <button class="btn-save" id="saveBtn" onclick="saveRecord()" disabled>儲存至 Google Sheet</button>
+  </div>
+  <div id="panel-records" class="panel">
+    <div class="search-bar">
+      <span>🔍</span>
+      <input type="text" id="searchInput" placeholder="搜尋 Email..." oninput="filterRecords()">
+    </div>
+    <div id="recordsList"><div class="loading-msg">載入中...</div></div>
+  </div>
+</div>
+<canvas id="canvas"></canvas>
+<div class="toast" id="toast"></div>
+
+<script>
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw03AOf-qKcaOaLyJVqs_KYQ-6-pD1rBwapDAxcCZwquz8FTkDodT6BEZ9xpGNbYayEuA/exec";
+let debugLog = [], allRecords = [], worker = null;
+document.getElementById('dateInput').value = new Date().toISOString().split('T')[0];
+
+async function initWorker() {
+  if (worker) return worker;
+  worker = await Tesseract.createWorker('eng', 1);
+  await worker.setParameters({ tessedit_char_whitelist:'0123456789', tessedit_pageseg_mode:'7' });
+  return worker;
+}
+
+const dropzone = document.getElementById('dropzone');
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('dragover'); if(e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]); });
+function handleFile(e) { if(e.target.files[0]) processFile(e.target.files[0]); }
+
+function processFile(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('imgPreview').src = ev.target.result;
+    document.getElementById('imgPreview').style.display = 'block';
+    const img = new Image();
+    img.onload = () => analyze(img);
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function analyze(img) {
+  setStatus('loading', '載入辨識引擎...');
+  setProgress(0, true);
+  debugLog = [];
+
+  const canvas = document.getElementById('canvas');
+  canvas.width = img.width; canvas.height = img.height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  const W = img.width, H = img.height;
+  debugLog.push(`圖片尺寸: ${W} x ${H}`);
+
+  try { await initWorker(); } catch(e) {
+    setStatus('error', 'Tesseract 載入失敗，請確認網路連線');
+    setProgress(0, false); return;
+  }
+
+  setStatus('loading', '掃描數值位置...');
+  setProgress(10);
+
+  // ── 掃描右側灰色數字行 ──
+  // 數值都在右側 70% 以後，灰色文字（RGB 接近、亮度中等）
+  const x1 = Math.floor(W * 0.70);
+  const fullData = ctx.getImageData(x1, 0, W - x1, H).data;
+  const pw = W - x1;
+
+  const rowGray = new Int32Array(H);
+  for (let y = 0; y < H; y++) {
+    let cnt = 0;
+    for (let x = 0; x < pw; x++) {
+      const i = (y * pw + x) * 4;
+      const r = fullData[i], g = fullData[i+1], b = fullData[i+2];
+      const isGray = Math.abs(r-g) < 30 && Math.abs(g-b) < 30 && r < 175 && r > 45;
+      if (isGray) cnt++;
+    }
+    rowGray[y] = cnt;
+  }
+
+  // 合併灰色數字行群組（gap=5px）
+  const groups = mergeRows(rowGray, H, 4, 5, 15);
+  debugLog.push(`\n掃到 ${groups.length} 個數字群組:`);
+  groups.forEach((g,i) => debugLog.push(`  #${i+1}: y=${g[0]}-${g[1]} (${(g[0]/H*100).toFixed(1)}%) 高=${g[1]-g[0]}px`));
+
+  // ── 找四個目標群組 ──
+  // 壓力指數：y < 35% 的第一個高度≥15px群組
+  // 情緒/放鬆/活力：y > 50% 的連續三個高度≥15px群組
+  const bigGroups = groups.filter(g => g[1]-g[0] >= 15);
+  const stressGroup  = bigGroups.find(g => g[0] > H * 0.10 && g[0] < H * 0.40);
+  const lowerGroups  = bigGroups.filter(g => g[0] > H * 0.55 && (g[1]-g[0]) >= 20);
+
+  debugLog.push(`\n篩選後:`);
+  debugLog.push(`  壓力指數: ${stressGroup ? `y=${stressGroup[0]}-${stressGroup[1]}` : '未找到'}`);
+  debugLog.push(`  下方群組數: ${lowerGroups.length}`);
+  lowerGroups.forEach((g,i) => debugLog.push(`    [${i+1}] y=${g[0]}-${g[1]} (${(g[0]/H*100).toFixed(1)}%)`));
+
+  if (!stressGroup || lowerGroups.length < 3) {
+    setStatus('error', `找到壓力:${stressGroup?'✓':'✗'} 下方群組:${lowerGroups.length}/3，請上傳完整截圖`);
+    document.getElementById('debugBox').textContent = debugLog.join('\n');
+    setProgress(0, false); return;
+  }
+
+  const crops = [
+    { key:'stress',   label:'壓力指數',      g: stressGroup },
+    { key:'emotion',  label:'情緒反應靈活度', g: lowerGroups[0] },
+    { key:'relax',    label:'放鬆指數',       g: lowerGroups[1] },
+    { key:'vitality', label:'活力指數',       g: lowerGroups[2] },
+  ];
+
+  const results = {};
+  let found = 0;
+
+  for (let i = 0; i < crops.length; i++) {
+    const { key, label, g } = crops[i];
+    setStatus('loading', `辨識 ${label} (${i+1}/4)...`);
+    setProgress(15 + i * 20);
+
+    const pad = Math.max(4, Math.floor(H * 0.003));
+    const cy1 = Math.max(0, g[0] - pad);
+    const cy2 = Math.min(H, g[1] + pad);
+    debugLog.push(`\n[${label}] y=${cy1}-${cy2} 高=${cy2-cy1}px`);
+
+    const cc = makeCropCanvas(canvas, x1, cy1, W-x1, cy2-cy1, 5);
+
+    try {
+      const { data: { text } } = await worker.recognize(cc);
+      const num = text.replace(/[^0-9]/g, '').trim();
+      debugLog.push(`  Tesseract: "${text.trim()}" → "${num}"`);
+      if (num) { results[key] = num; found++; }
+    } catch(e) { debugLog.push(`  錯誤: ${e.message}`); }
+  }
+
+  setProgress(100);
+  setTimeout(() => setProgress(0, false), 600);
+  document.getElementById('debugBox').textContent = debugLog.join('\n');
+  renderMetrics(results);
+
+  if (found >= 3) {
+    setStatus('ok', `識別完成 ${found}/4 項${found<4?' (可手動補填)':''}`);
+    document.getElementById('saveBtn').disabled = false;
+  } else if (found > 0) {
+    setStatus('warn', `識別到 ${found}/4 項，請手動補填`);
+    document.getElementById('saveBtn').disabled = false;
+  } else {
+    setStatus('error', '識別失敗，請展開偵測細節');
+  }
+}
+
+function mergeRows(rowGray, H, minPx, gap, minH) {
+  let raw=[], inBlock=false, start=0;
+  for (let y=0;y<H;y++) {
+    if(rowGray[y]>=minPx){ if(!inBlock){inBlock=true;start=y;} }
+    else{ if(inBlock){inBlock=false;raw.push([start,y-1]);} }
+  }
+  if(inBlock) raw.push([start,H-1]);
+  const merged=[];
+  for(const b of raw){
+    if(merged.length && b[0]-merged[merged.length-1][1]<gap) merged[merged.length-1][1]=b[1];
+    else merged.push([...b]);
+  }
+  return merged.filter(b=>b[1]-b[0]>=minH);
+}
+
+function makeCropCanvas(src, x, y, w, h, scale) {
+  const c = document.createElement('canvas');
+  c.width = w*scale; c.height = h*scale;
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, x, y, w, h, 0, 0, c.width, c.height);
+  const px = ctx.getImageData(0, 0, c.width, c.height);
+  const d = px.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const gray = d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114;
+    const val = gray > 150 ? 255 : 0;
+    d[i] = d[i+1] = d[i+2] = val;
+  }
+  ctx.putImageData(px, 0, 0);
+  return c;
+}
+
+function renderMetrics(results) {
+  const colors={stress:'#E8753A',emotion:'#185FA5',relax:'#0F6E56',vitality:'#993556'};
+  for(const [key,value] of Object.entries(results)){
+    const el=document.getElementById('v-'+key);
+    const box=document.getElementById('box-'+key);
+    const fs=value.length>=4?'20px':'26px';
+    el.innerHTML=`<span style="color:${colors[key]};font-size:${fs}">${value}</span><span class="verify-dot"></span>`;
+    box.className='metric-box verified';
+  }
+
+}
+
+async function saveRecord() {
+  const email=document.getElementById('emailInput').value.trim();
+  const date=document.getElementById('dateInput').value;
+  if(!email){showToast('請填入 Email');return;}
+  const btn=document.getElementById('saveBtn');
+  btn.disabled=true; btn.textContent='儲存中...';
+  const getNum=id=>{const s=document.getElementById(id).querySelector('span');return s?parseInt(s.textContent)||'':'';};
+  const badge=document.getElementById('v-stress').querySelector('.stress-badge');
+  try {
+    await fetch(SCRIPT_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email,date,stress:getNum('v-stress'),stressLevel:badge?badge.textContent:'',emotion:getNum('v-emotion'),relax:getNum('v-relax'),vitality:getNum('v-vitality'),bpm:''})});
+    showToast('✓ 已儲存至 Google Sheet');
+  } catch(e){showToast('儲存失敗，請確認網路');}
+  btn.disabled=false; btn.textContent='儲存至 Google Sheet';
+}
+
+function switchTab(tab,el){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('panel-'+tab).classList.add('active');
+  if(tab==='records') loadRecords();
+}
+
+async function loadRecords(){
+  document.getElementById('recordsList').innerHTML='<div class="loading-msg">載入中...</div>';
+  try{
+    const res=await fetch(SCRIPT_URL+'?action=get');
+    const data=await res.json();
+    allRecords=data.records||[];
+    renderRecords(allRecords);
+  }catch(e){
+    document.getElementById('recordsList').innerHTML='<div class="empty-state"><div class="ico">⚠️</div><p>無法載入，請確認 Apps Script 設定</p></div>';
+  }
+}
+
+function filterRecords(){
+  const q=document.getElementById('searchInput').value.toLowerCase();
+  renderRecords(allRecords.filter(r=>(r['Email']||'').toLowerCase().includes(q)));
+}
+
+function renderRecords(records){
+  const el=document.getElementById('recordsList');
+  if(!records.length){el.innerHTML='<div class="empty-state"><div class="ico">📋</div><p>尚無紀錄</p></div>';return;}
+  const lc=l=>l==='正常'?'badge-normal':l==='偏高'?'badge-high':'badge-severe';
+  el.innerHTML=records.map(r=>`
+    <div class="record-card">
+      <div class="record-header">
+        <div>
+          <div class="record-email">${r['Email']||'未知'}</div>
+          <div class="record-meta">${r['日期']||''}</div>
+        </div>
+      </div>
+      <div class="record-metrics">
+        <div class="rm"><div class="rm-val c-stress">${r['壓力指數']||'—'}</div><div class="rm-label">壓力指數</div></div>
+        <div class="rm"><div class="rm-val c-emotion">${r['情緒反應靈活度']||'—'}</div><div class="rm-label">情緒靈活度</div></div>
+        <div class="rm"><div class="rm-val c-relax">${r['放鬆指數']||'—'}</div><div class="rm-label">放鬆指數</div></div>
+        <div class="rm"><div class="rm-val c-vitality">${r['活力指數']||'—'}</div><div class="rm-label">活力指數</div></div>
+      </div>
+    </div>`).join('');
+}
+
+function setStatus(type,msg){
+  document.getElementById('spinner').style.display=type==='loading'?'block':'none';
+  const t=document.getElementById('ocrText');
+  t.textContent=msg;
+  t.style.color=type==='ok'?'#1a7a40':type==='error'?'#b00020':type==='warn'?'#c05000':'#8e8e93';
+}
+
+function setProgress(pct,show=true){
+  document.getElementById('progressBar').style.display=show?'block':'none';
+  document.getElementById('progressFill').style.width=pct+'%';
+}
+
+function toggleDebug(){
+  const b=document.getElementById('debugBox');
+  b.style.display=b.style.display==='block'?'none':'block';
+}
+
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2800);
+}
+
+window.addEventListener('load', () => { initWorker().catch(()=>{}); });
+</script>
+</body>
+</html>
