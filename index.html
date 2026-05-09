@@ -35,6 +35,10 @@
         return `${WEB_APP_URL}?action=history&email=${encodeURIComponent(email || "user@example.com")}`;
       }
 
+      function cloudSaveFallbackUrl(payload) {
+        return `${WEB_APP_URL}?action=save&payload=${encodeURIComponent(JSON.stringify(payload))}`;
+      }
+
       function todayTaiwanDate() {
         return new Intl.DateTimeFormat("zh-TW", {
           timeZone: "Asia/Taipei",
@@ -880,6 +884,7 @@
           setMessage("");
 
           const payload = {
+            recordId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
             email: email.trim(),
             patientName: profile.name.trim(),
             patientBirthDate: profile.birthDate.trim(),
@@ -907,12 +912,17 @@
           };
 
           try {
+            const body = new URLSearchParams();
+            body.set("payload", JSON.stringify(payload));
+
             await fetch(WEB_APP_URL, {
               method: "POST",
               mode: "no-cors",
-              headers: { "Content-Type": "text/plain;charset=utf-8" },
-              body: JSON.stringify(payload),
+              body,
             });
+
+            const beacon = new Image();
+            beacon.src = cloudSaveFallbackUrl(payload);
 
             const nextHistory = [...history, { ...payload, savedAt: new Date().toISOString() }].slice(-30);
             setHistory(nextHistory);
