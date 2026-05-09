@@ -25,7 +25,7 @@
     <script type="text/babel" data-type="module">
       import React, { useMemo, useState } from "react";
       import { createRoot } from "react-dom/client";
-      import { Activity, BatteryCharging, Brain, Camera, CheckCircle2, Gauge, HeartPulse, Loader2, UploadCloud, AlertTriangle, Table2 } from "lucide-react";
+      import { Activity, BatteryCharging, Brain, Camera, CheckCircle2, Gauge, HeartPulse, LineChart, Loader2, Search, UploadCloud, AlertTriangle, Table2, UserPlus } from "lucide-react";
       import { motion } from "framer-motion";
 
       const WEB_APP_URL =
@@ -342,6 +342,118 @@
         );
       }
 
+      const BRSR_ITEMS = [
+        { key: "sleep", label: "睡眠困難", short: "睡眠" },
+        { key: "anxiety", label: "感覺緊張不安", short: "焦慮" },
+        { key: "anger", label: "覺得容易苦惱或動怒", short: "易怒" },
+        { key: "depression", label: "感覺憂鬱、心情低落", short: "低落" },
+        { key: "inferiority", label: "覺得比不上別人", short: "自卑" },
+      ];
+
+      const BRSR_SCORE_LABELS = ["完全沒有", "輕微", "中等程度", "厲害", "非常厲害"];
+
+      function evaluateBrsr(brsr) {
+        const total = BRSR_ITEMS.reduce((sum, item) => sum + Number(brsr[item.key] || 0), 0);
+        const suicide = Number(brsr.suicide || 0);
+
+        if (total >= 15 || suicide >= 2) {
+          return {
+            total,
+            suicide,
+            level: "重度或高風險",
+            tone: "red",
+            meaning: "分數顯示心理困擾較高，建議盡快找專業人員或可信任的人討論目前狀態。",
+          };
+        }
+        if (total >= 10) {
+          return {
+            total,
+            suicide,
+            level: "中度困擾",
+            tone: "yellow",
+            meaning: "近期壓力或情緒負荷偏高，建議安排支持、休息與進一步關懷。",
+          };
+        }
+        if (total >= 6) {
+          return {
+            total,
+            suicide,
+            level: "輕度困擾",
+            tone: "yellow",
+            meaning: "已有一些身心壓力訊號，建議搭配 HRV 趨勢觀察並調整生活負荷。",
+          };
+        }
+        return {
+          total,
+          suicide,
+          level: "一般範圍",
+          tone: "green",
+          meaning: "目前主觀困擾分數較低，可持續追蹤睡眠、壓力事件與 HRV 趨勢。",
+        };
+      }
+
+      function TrendChart({ records }) {
+        const metrics = [
+          { key: "stressIndex", label: "壓力", color: "#ef4444", normalize: (value) => normalizeRadarScore("stressIndex", value) },
+          { key: "emotionalFlexibility", label: "情緒", color: "#8b5cf6", normalize: (value) => normalizeRadarScore("emotionalFlexibility", value) },
+          { key: "relaxationIndex", label: "放鬆", color: "#10b981", normalize: (value) => normalizeRadarScore("relaxationIndex", value) },
+          { key: "vitalityIndex", label: "活力", color: "#f97316", normalize: (value) => normalizeRadarScore("vitalityIndex", value) },
+          { key: "brsrTotal", label: "BRSR", color: "#0f172a", normalize: (value) => clamp(100 - (toNumber(value) || 0) * 5, 0, 100) },
+        ];
+        const width = 640;
+        const height = 260;
+        const padding = 34;
+        const plotWidth = width - padding * 2;
+        const plotHeight = height - padding * 2;
+        const sorted = [...records].sort((a, b) => String(a.measureDate || a.savedAt || "").localeCompare(String(b.measureDate || b.savedAt || "")));
+        const xFor = (index) => padding + (sorted.length <= 1 ? plotWidth / 2 : (index / (sorted.length - 1)) * plotWidth);
+        const yFor = (score) => padding + (1 - score / 100) * plotHeight;
+
+        return (
+          <div>
+            <svg viewBox={`0 0 ${width} ${height}`} className="h-72 w-full" role="img" aria-label="歷史趨勢圖">
+              {[0, 25, 50, 75, 100].map((score) => (
+                <g key={score}>
+                  <line x1={padding} y1={yFor(score)} x2={width - padding} y2={yFor(score)} stroke="#e2e8f0" strokeWidth="1" />
+                  <text x="6" y={yFor(score) + 4} className="fill-slate-400 text-[11px]">
+                    {score}
+                  </text>
+                </g>
+              ))}
+              {metrics.map((metric) => {
+                const points = sorted
+                  .map((record, index) => {
+                    const value = toNumber(record[metric.key]);
+                    if (value === null) return null;
+                    return `${xFor(index)},${yFor(metric.normalize(value))}`;
+                  })
+                  .filter(Boolean);
+                if (points.length === 0) return null;
+                return <polyline key={metric.key} points={points.join(" ")} fill="none" stroke={metric.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />;
+              })}
+            </svg>
+            <div className="flex flex-wrap gap-2">
+              {metrics.map((metric) => (
+                <span key={metric.key} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+                  <span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ backgroundColor: metric.color }} />
+                  {metric.label}
+                </span>
+              ))}
+            </div>
+            <div className="mt-4 max-h-72 overflow-auto rounded-2xl border border-slate-200">
+              {sorted.map((record) => (
+                <div key={`${record.email}-${record.measureDate}-${record.savedAt}`} className="grid gap-1 border-b border-slate-100 p-3 text-xs last:border-b-0 md:grid-cols-[110px_1fr]">
+                  <p className="font-bold text-slate-700">{record.measureDate || "未填日期"}</p>
+                  <p className="text-slate-500">
+                    壓力 {record.stressIndex || "-"} / 情緒 {record.emotionalFlexibility || "-"} / 放鬆 {record.relaxationIndex || "-"} / 活力 {record.vitalityIndex || "-"} / BRSR {record.brsrTotal ?? "-"}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
       function evaluateMetric(key, value) {
         const n = toNumber(value);
         if (n === null) {
@@ -514,8 +626,35 @@
         const [ocrText, setOcrText] = useState("");
         const [isReading, setIsReading] = useState(false);
         const [isSaving, setIsSaving] = useState(false);
+        const [isLoadingCloudHistory, setIsLoadingCloudHistory] = useState(false);
         const [message, setMessage] = useState("");
         const [dragging, setDragging] = useState(false);
+        const [savedProfiles, setSavedProfiles] = useState(() => {
+          try {
+            const profiles = JSON.parse(localStorage.getItem("hrvPatientProfiles") || "[]");
+            if (profiles.length > 0) return profiles;
+            const legacyEmails = JSON.parse(localStorage.getItem("hrvCommonEmails") || "[]");
+            return legacyEmails.map((item) => ({ email: item, name: "", birthDate: "", gender: "" }));
+          } catch {
+            return [];
+          }
+        });
+        const [profile, setProfile] = useState({
+          name: "",
+          birthDate: "",
+          gender: "",
+        });
+        const [historyEmail, setHistoryEmail] = useState("");
+        const [cloudHistory, setCloudHistory] = useState([]);
+        const [historySource, setHistorySource] = useState("local");
+        const [brsr, setBrsr] = useState({
+          sleep: 0,
+          anxiety: 0,
+          anger: 0,
+          depression: 0,
+          inferiority: 0,
+          suicide: 0,
+        });
         const [history, setHistory] = useState(() => {
           try {
             return JSON.parse(localStorage.getItem("hrvReadings") || "[]");
@@ -542,6 +681,7 @@
         }, [email, measureDate, form]);
 
         const assessment = useMemo(() => diagnoseHrv(form), [form]);
+        const brsrAssessment = useMemo(() => evaluateBrsr(brsr), [brsr]);
 
         const metricCards = useMemo(
           () => [
@@ -596,6 +736,81 @@
           [form],
         );
 
+        const filteredHistory = useMemo(() => {
+          const target = historyEmail.trim().toLowerCase();
+          if (!target) return [];
+          return history.filter((record) => String(record.email || "").toLowerCase() === target);
+        }, [history, historyEmail]);
+
+        const displayedHistory = useMemo(() => (historySource === "cloud" ? cloudHistory : filteredHistory), [cloudHistory, filteredHistory, historySource]);
+
+        function saveProfile(value = email) {
+          const nextEmail = value.trim();
+          if (!nextEmail) return;
+          const nextProfile = {
+            email: nextEmail,
+            name: profile.name.trim(),
+            birthDate: profile.birthDate.trim(),
+            gender: profile.gender,
+          };
+          const nextProfiles = [nextProfile, ...savedProfiles.filter((item) => item.email.toLowerCase() !== nextEmail.toLowerCase())].slice(0, 20);
+          setSavedProfiles(nextProfiles);
+          localStorage.setItem("hrvPatientProfiles", JSON.stringify(nextProfiles));
+          setMessage(`已儲存基本資料：${nextProfile.name || nextEmail}`);
+        }
+
+        function selectProfile(item) {
+          setEmail(item.email);
+          setProfile({
+            name: item.name || "",
+            birthDate: item.birthDate || "",
+            gender: item.gender || "",
+          });
+          setHistoryEmail(item.email);
+        }
+
+        function loadCloudHistory() {
+          const target = historyEmail.trim();
+          if (!target) {
+            setMessage("請先輸入要查詢的 email。");
+            return;
+          }
+
+          setIsLoadingCloudHistory(true);
+          setMessage("");
+
+          const callbackName = `hrvHistoryCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+          const script = document.createElement("script");
+          const cleanup = () => {
+            delete window[callbackName];
+            script.remove();
+          };
+
+          window[callbackName] = (result) => {
+            cleanup();
+            setIsLoadingCloudHistory(false);
+
+            if (!result || result.ok === false) {
+              setMessage(`雲端歷史查詢失敗：${result?.error || "未知錯誤"}`);
+              return;
+            }
+
+            const records = Array.isArray(result.records) ? result.records : [];
+            setCloudHistory(records);
+            setHistorySource("cloud");
+            setMessage(`已從 Google Sheet 載入 ${records.length} 筆紀錄。`);
+          };
+
+          script.onerror = () => {
+            cleanup();
+            setIsLoadingCloudHistory(false);
+            setMessage("雲端歷史查詢失敗，請確認 Apps Script 已更新並重新部署。");
+          };
+
+          script.src = `${WEB_APP_URL}?action=history&email=${encodeURIComponent(target)}&callback=${callbackName}`;
+          document.body.appendChild(script);
+        }
+
         async function handleFile(file) {
           if (!file) return;
           setMessage("");
@@ -629,6 +844,9 @@
 
           const payload = {
             email: email.trim(),
+            patientName: profile.name.trim(),
+            patientBirthDate: profile.birthDate.trim(),
+            patientGender: profile.gender,
             measureDate,
             stressIndex: form.stressIndex,
             emotionalFlexibility: form.emotionalFlexibility,
@@ -641,6 +859,14 @@
             assessmentLevel: assessment.level,
             assessmentObservation: assessment.observation,
             assessmentRecommendation: assessment.recommendation,
+            brsrSleep: brsr.sleep,
+            brsrAnxiety: brsr.anxiety,
+            brsrAnger: brsr.anger,
+            brsrDepression: brsr.depression,
+            brsrInferiority: brsr.inferiority,
+            brsrSuicide: brsr.suicide,
+            brsrTotal: brsrAssessment.total,
+            brsrLevel: brsrAssessment.level,
           };
 
           try {
@@ -654,6 +880,7 @@
             const nextHistory = [...history, { ...payload, savedAt: new Date().toISOString() }].slice(-30);
             setHistory(nextHistory);
             localStorage.setItem("hrvReadings", JSON.stringify(nextHistory));
+            saveProfile(payload.email);
             setMessage("已送出至 Google Sheet。若表格沒有新增資料，請檢查 Apps Script 部署權限與 SHEET_NAME。");
           } catch (error) {
             setMessage("儲存失敗：" + (error.message || "未知錯誤"));
@@ -706,12 +933,78 @@
                 <h2 className="mb-4 text-sm font-bold text-slate-500">使用者資訊</h2>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="mb-2 block text-xs font-semibold uppercase text-slate-500">Email</label>
-                    <input value={email} onChange={(e) => setEmail(e.target.value)} className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-400" />
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <label className="block text-xs font-semibold uppercase text-slate-500">Email</label>
+                      <button type="button" onClick={() => saveProfile()} className="flex items-center gap-1 text-xs font-bold text-orange-600">
+                        <UserPlus size={14} /> 儲存基本資料
+                      </button>
+                    </div>
+                    <input
+                      value={email}
+                      list="common-email-list"
+                      onChange={(e) => {
+                        const nextEmail = e.target.value;
+                        setEmail(nextEmail);
+                        const matched = savedProfiles.find((item) => item.email.toLowerCase() === nextEmail.trim().toLowerCase());
+                        if (matched) selectProfile(matched);
+                      }}
+                      className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-400"
+                    />
+                    <datalist id="common-email-list">
+                      {savedProfiles.map((item) => (
+                        <option key={item.email} value={item.email}>
+                          {item.name || item.email}
+                        </option>
+                      ))}
+                    </datalist>
+                    {savedProfiles.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {savedProfiles.map((item) => (
+                          <button key={item.email} type="button" onClick={() => selectProfile(item)} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                            {item.name ? `${item.name}｜${item.email}` : item.email}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="mb-2 block text-xs font-semibold text-slate-500">量測日期</label>
                     <input value={measureDate} onChange={(e) => setMeasureDate(e.target.value)} className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-400" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold text-slate-500">姓名（暱稱）</label>
+                    <input
+                      value={profile.name}
+                      onChange={(e) => setProfile((prev) => ({ ...prev, name: e.target.value }))}
+                      placeholder="例如：小安"
+                      className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold text-slate-500">出生年月日</label>
+                    <input
+                      type="date"
+                      value={profile.birthDate}
+                      onChange={(e) => setProfile((prev) => ({ ...prev, birthDate: e.target.value }))}
+                      className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-400"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="mb-2 block text-xs font-semibold text-slate-500">性別</label>
+                    <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                      {["女性", "男性", "非二元/其他", "未填"].map((item) => (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => setProfile((prev) => ({ ...prev, gender: item === "未填" ? "" : item }))}
+                          className={`rounded-2xl px-4 py-3 text-sm font-bold transition ${
+                            (profile.gender || "未填") === item ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          }`}
+                        >
+                          {item}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </section>
@@ -869,6 +1162,141 @@
                 <p className="mt-4 text-xs leading-relaxed text-slate-400">
                   HRV 判讀適合看個人趨勢。這裡使用本瀏覽器最近 7 筆已儲存資料做參考；若換裝置或清除瀏覽器資料，基準線會重新累積。
                 </p>
+              </details>
+
+              <section className="rounded-[2rem] bg-white p-6 shadow-sm">
+                <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-500">BRSR 心情溫度計</h2>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-400">請回想最近一週的主觀感受，0 代表完全沒有，4 代表非常厲害。</p>
+                  </div>
+                  <div className={`rounded-2xl border px-4 py-3 text-right ${metricToneColor(brsrAssessment.tone)}`}>
+                    <p className="text-xs font-bold">總分</p>
+                    <p className="text-2xl font-bold text-slate-900">{brsrAssessment.total}</p>
+                    <p className="text-xs font-bold">{brsrAssessment.level}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {BRSR_ITEMS.map((item) => (
+                    <div key={item.key} className="rounded-2xl bg-slate-100 p-4">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <label className="text-sm font-bold text-slate-700">{item.label}</label>
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-600">{BRSR_SCORE_LABELS[brsr[item.key]]}</span>
+                      </div>
+                      <div className="grid grid-cols-5 gap-2">
+                        {[0, 1, 2, 3, 4].map((score) => (
+                          <button
+                            key={`${item.key}-${score}`}
+                            type="button"
+                            onClick={() => setBrsr((prev) => ({ ...prev, [item.key]: score }))}
+                            className={`rounded-xl px-2 py-2 text-sm font-bold transition ${
+                              brsr[item.key] === score ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-200"
+                            }`}
+                          >
+                            {score}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 rounded-2xl bg-slate-100 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <label className="text-sm font-bold text-slate-700">有自殺的想法</label>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-600">{BRSR_SCORE_LABELS[brsr.suicide]}</span>
+                  </div>
+                  <div className="grid grid-cols-5 gap-2">
+                    {[0, 1, 2, 3, 4].map((score) => (
+                      <button
+                        key={`suicide-${score}`}
+                        type="button"
+                        onClick={() => setBrsr((prev) => ({ ...prev, suicide: score }))}
+                        className={`rounded-xl px-2 py-2 text-sm font-bold transition ${brsr.suicide === score ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-200"}`}
+                      >
+                        {score}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className={`mt-4 rounded-2xl border p-4 text-sm leading-relaxed ${metricToneColor(brsrAssessment.tone)}`}>
+                  <p className="font-bold text-slate-900">{brsrAssessment.level}</p>
+                  <p className="mt-1 text-slate-700">{brsrAssessment.meaning}</p>
+                </div>
+              </section>
+
+              <details className="rounded-[2rem] bg-white p-6 shadow-sm">
+                <summary className="cursor-pointer list-none">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <h2 className="text-sm font-bold text-slate-500">歷史趨勢區</h2>
+                      <p className="mt-1 text-xs text-slate-400">輸入 email 查詢本機或 Google Sheet 紀錄</p>
+                    </div>
+                    <LineChart className="text-slate-400" size={22} />
+                  </div>
+                </summary>
+                <div className="mt-4 flex flex-col gap-3 md:flex-row">
+                  <input
+                    value={historyEmail}
+                    list="common-email-list"
+                    onChange={(e) => {
+                      setHistoryEmail(e.target.value);
+                      setHistorySource("local");
+                    }}
+                    placeholder="輸入欲查看的 email"
+                    className="min-w-0 flex-1 rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHistoryEmail(email);
+                      setHistorySource("local");
+                    }}
+                    className="flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white"
+                  >
+                    <Search size={16} /> 查目前帳號
+                  </button>
+                  <button
+                    type="button"
+                    onClick={loadCloudHistory}
+                    disabled={isLoadingCloudHistory}
+                    className="flex items-center justify-center gap-2 rounded-2xl bg-orange-500 px-5 py-3 text-sm font-bold text-white disabled:bg-orange-200"
+                  >
+                    {isLoadingCloudHistory ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                    查 Google Sheet
+                  </button>
+                </div>
+                {historyEmail.trim() && (
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setHistorySource("local")}
+                      className={`rounded-full px-3 py-1 text-xs font-bold ${historySource === "local" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500"}`}
+                    >
+                      本機 {filteredHistory.length} 筆
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHistorySource("cloud")}
+                      className={`rounded-full px-3 py-1 text-xs font-bold ${historySource === "cloud" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500"}`}
+                    >
+                      Google Sheet {cloudHistory.length} 筆
+                    </button>
+                  </div>
+                )}
+                <div className="mt-4">
+                  {!historyEmail.trim() ? (
+                    <p className="rounded-2xl bg-slate-100 p-4 text-sm text-slate-500">請輸入 email 後查看趨勢。</p>
+                  ) : displayedHistory.length === 0 ? (
+                    <p className="rounded-2xl bg-slate-100 p-4 text-sm text-slate-500">
+                      目前{historySource === "cloud" ? " Google Sheet" : "本機"}沒有這個 email 的儲存紀錄。
+                    </p>
+                  ) : (
+                    <TrendChart records={displayedHistory} />
+                  )}
+                </div>
               </details>
 
               <section className="rounded-[2rem] bg-white p-6 shadow-sm">
