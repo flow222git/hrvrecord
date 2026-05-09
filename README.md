@@ -2,7 +2,7 @@
 
 Static React app for uploading HRV screenshots, running local OCR with Tesseract.js, reviewing extracted values, and posting confirmed values to Google Sheet through Apps Script.
 
-The app also evaluates each upload with the rules in [HRV_INTERPRETATION_SPEC.md](./HRV_INTERPRETATION_SPEC.md), including single-metric bands, comprehensive diagnosis, recommendations, BRSR mood thermometer scoring, patient profiles, history trend lookup, Google Sheet history lookup, and a browser-local 7-record baseline.
+The app also evaluates each upload with the rules in [HRV_INTERPRETATION_SPEC.md](./HRV_INTERPRETATION_SPEC.md), including single-metric bands, comprehensive diagnosis, recommendations, BSRS mood thermometer scoring, patient profiles, history trend lookup, Google Sheet history lookup, and a browser-local 7-record baseline.
 
 ## Google Sheet history API
 

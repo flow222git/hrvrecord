@@ -406,7 +406,7 @@
           { key: "emotionalFlexibility", label: "情緒", color: "#8b5cf6", normalize: (value) => normalizeRadarScore("emotionalFlexibility", value) },
           { key: "relaxationIndex", label: "放鬆", color: "#10b981", normalize: (value) => normalizeRadarScore("relaxationIndex", value) },
           { key: "vitalityIndex", label: "活力", color: "#f97316", normalize: (value) => normalizeRadarScore("vitalityIndex", value) },
-          { key: "brsrTotal", label: "BRSR", color: "#0f172a", normalize: (value) => clamp(100 - (toNumber(value) || 0) * 5, 0, 100) },
+          { key: "brsrTotal", label: "BSRS", color: "#0f172a", normalize: (value) => clamp(100 - (toNumber(value) || 0) * 5, 0, 100) },
         ];
         const width = 640;
         const height = 260;
@@ -453,7 +453,7 @@
                 <div key={`${record.email}-${record.measureDate}-${record.savedAt}`} className="grid gap-1 border-b border-slate-100 p-3 text-xs last:border-b-0 md:grid-cols-[110px_1fr]">
                   <p className="font-bold text-slate-700">{record.measureDate || "未填日期"}</p>
                   <p className="text-slate-500">
-                    壓力 {record.stressIndex || "-"} / 情緒 {record.emotionalFlexibility || "-"} / 放鬆 {record.relaxationIndex || "-"} / 活力 {record.vitalityIndex || "-"} / BRSR {record.brsrTotal ?? "-"}
+                    壓力 {record.stressIndex || "-"} / 情緒 {record.emotionalFlexibility || "-"} / 放鬆 {record.relaxationIndex || "-"} / 活力 {record.vitalityIndex || "-"} / BSRS {record.brsrTotal ?? "-"}
                   </p>
                 </div>
               ))}
@@ -721,7 +721,11 @@
         }, [email, measureDate, form]);
 
         const assessment = useMemo(() => diagnoseHrv(form), [form]);
-        const brsrAssessment = useMemo(() => evaluateBrsr(brsr), [brsr]);
+        const brsrAssessment = evaluateBrsr(brsr);
+
+        function updateBrsrScore(key, score) {
+          setBrsr((prev) => ({ ...prev, [key]: Number(score) }));
+        }
 
         const metricCards = useMemo(
           () => [
@@ -1224,7 +1228,7 @@
               </Panel>
 
               <Panel
-                title="BRSR 心情溫度計"
+                title="BSRS 心情溫度計"
                 subtitle="請回想最近一週的主觀感受，0 代表完全沒有，4 代表非常厲害。"
                 icon={Brain}
                 badge={
@@ -1247,7 +1251,7 @@
                           <button
                             key={`${item.key}-${score}`}
                             type="button"
-                            onClick={() => setBrsr((prev) => ({ ...prev, [item.key]: score }))}
+                            onClick={() => updateBrsrScore(item.key, score)}
                             className={`rounded-xl px-2 py-2 text-sm font-bold transition ${
                               brsr[item.key] === score ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-200"
                             }`}
@@ -1270,7 +1274,7 @@
                       <button
                         key={`suicide-${score}`}
                         type="button"
-                        onClick={() => setBrsr((prev) => ({ ...prev, suicide: score }))}
+                        onClick={() => updateBrsrScore("suicide", score)}
                         className={`rounded-xl px-2 py-2 text-sm font-bold transition ${brsr.suicide === score ? "bg-slate-900 text-white" : "bg-white text-slate-500 hover:bg-slate-200"}`}
                       >
                         {score}
