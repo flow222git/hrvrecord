@@ -31,6 +31,10 @@
       const WEB_APP_URL =
         "https://script.google.com/macros/s/AKfycbzB8fxXekVFIMM8F9j8sdWtQ40aVkqQBWd7074jemhdpYnfpjcYczkrUIgfGRrOSDEY/exec";
 
+      function cloudHistoryTestUrl(email) {
+        return `${WEB_APP_URL}?action=history&email=${encodeURIComponent(email || "user@example.com")}`;
+      }
+
       function todayTaiwanDate() {
         return new Intl.DateTimeFormat("zh-TW", {
           timeZone: "Asia/Taipei",
@@ -675,6 +679,7 @@
           birthDate: "",
           gender: "",
         });
+        const [showProfileDetails, setShowProfileDetails] = useState(false);
         const [historyEmail, setHistoryEmail] = useState("");
         const [cloudHistory, setCloudHistory] = useState([]);
         const [historySource, setHistorySource] = useState("local");
@@ -797,6 +802,7 @@
             birthDate: item.birthDate || "",
             gender: item.gender || "",
           });
+          setShowProfileDetails(true);
           setHistoryEmail(item.email);
         }
 
@@ -835,7 +841,7 @@
           script.onerror = () => {
             cleanup();
             setIsLoadingCloudHistory(false);
-            setMessage("雲端歷史查詢失敗，請確認 Apps Script 已更新並重新部署。");
+            setMessage("雲端歷史查詢失敗：目前 Apps Script 可能不是「任何人皆可存取」，或尚未把新版 GET API 重新部署。請到 Apps Script 重新部署 Web App。");
           };
 
           script.src = `${WEB_APP_URL}?action=history&email=${encodeURIComponent(target)}&callback=${callbackName}`;
@@ -960,14 +966,30 @@
                 {imageUrl && <img src={imageUrl} alt="preview" className="mt-4 max-h-80 w-full rounded-3xl bg-black/5 object-contain" />}
               </motion.div>
 
-              <Panel title="使用者資訊" subtitle="維護帳號與基本資料" icon={UserPlus} defaultOpen>
+              <Panel
+                title="使用者資訊"
+                subtitle={showProfileDetails ? "維護帳號與基本資料" : "快速量測只需 email 與日期"}
+                icon={UserPlus}
+                defaultOpen
+                badge={
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      setShowProfileDetails((prev) => !prev);
+                    }}
+                    className={`rounded-2xl p-3 transition ${showProfileDetails ? "bg-orange-100 text-orange-600" : "bg-slate-100 text-slate-400"}`}
+                    title="開合基本資料"
+                  >
+                    <UserPlus size={24} />
+                  </button>
+                }
+              >
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <div className="mb-2 flex items-center justify-between gap-3">
                       <label className="block text-xs font-semibold uppercase text-slate-500">Email</label>
-                      <button type="button" onClick={() => saveProfile()} className="flex items-center gap-1 text-xs font-bold text-orange-600">
-                        <UserPlus size={14} /> 儲存基本資料
-                      </button>
+                      {!showProfileDetails && <span className="text-xs font-semibold text-slate-400">單次使用可不建檔</span>}
                     </div>
                     <input
                       value={email}
@@ -1001,41 +1023,50 @@
                     <label className="mb-2 block text-xs font-semibold text-slate-500">量測日期</label>
                     <input value={measureDate} onChange={(e) => setMeasureDate(e.target.value)} className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-400" />
                   </div>
-                  <div>
-                    <label className="mb-2 block text-xs font-semibold text-slate-500">姓名（暱稱）</label>
-                    <input
-                      value={profile.name}
-                      onChange={(e) => setProfile((prev) => ({ ...prev, name: e.target.value }))}
-                      placeholder="例如：小安"
-                      className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-xs font-semibold text-slate-500">出生年月日</label>
-                    <input
-                      type="date"
-                      value={profile.birthDate}
-                      onChange={(e) => setProfile((prev) => ({ ...prev, birthDate: e.target.value }))}
-                      className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-400"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="mb-2 block text-xs font-semibold text-slate-500">性別</label>
-                    <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                      {["女性", "男性", "非二元/其他", "未填"].map((item) => (
-                        <button
-                          key={item}
-                          type="button"
-                          onClick={() => setProfile((prev) => ({ ...prev, gender: item === "未填" ? "" : item }))}
-                          className={`rounded-2xl px-4 py-3 text-sm font-bold transition ${
-                            (profile.gender || "未填") === item ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                          }`}
-                        >
-                          {item}
+                  {showProfileDetails && (
+                    <>
+                      <div>
+                        <label className="mb-2 block text-xs font-semibold text-slate-500">姓名（暱稱）</label>
+                        <input
+                          value={profile.name}
+                          onChange={(e) => setProfile((prev) => ({ ...prev, name: e.target.value }))}
+                          placeholder="例如：小安"
+                          className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-xs font-semibold text-slate-500">出生年月日</label>
+                        <input
+                          type="date"
+                          value={profile.birthDate}
+                          onChange={(e) => setProfile((prev) => ({ ...prev, birthDate: e.target.value }))}
+                          className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-400"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="mb-2 block text-xs font-semibold text-slate-500">性別</label>
+                        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                          {["女性", "男性", "非二元/其他", "未填"].map((item) => (
+                            <button
+                              key={item}
+                              type="button"
+                              onClick={() => setProfile((prev) => ({ ...prev, gender: item === "未填" ? "" : item }))}
+                              className={`rounded-2xl px-4 py-3 text-sm font-bold transition ${
+                                (profile.gender || "未填") === item ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                              }`}
+                            >
+                              {item}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="md:col-span-2">
+                        <button type="button" onClick={() => saveProfile()} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-orange-500 px-4 py-3 text-sm font-bold text-white">
+                          <UserPlus size={16} /> 儲存基本資料
                         </button>
-                      ))}
-                    </div>
-                  </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </Panel>
 
@@ -1276,6 +1307,13 @@
                     查 Google Sheet
                   </button>
                 </div>
+                <p className="mt-3 text-xs leading-relaxed text-slate-400">
+                  若查詢失敗，請先確認 Apps Script 已部署為「任何人皆可存取」。可用
+                  <a className="mx-1 font-bold text-orange-600 underline" href={cloudHistoryTestUrl(historyEmail || email)} target="_blank" rel="noreferrer">
+                    測試連結
+                  </a>
+                  檢查是否回傳 JSON；若看到 403，就是部署權限尚未開放。
+                </p>
                 {historyEmail.trim() && (
                   <div className="mt-3 flex gap-2">
                     <button

@@ -8,6 +8,12 @@ The app also evaluates each upload with the rules in [HRV_INTERPRETATION_SPEC.md
 
 Use [APPS_SCRIPT_WEB_APP.gs](./APPS_SCRIPT_WEB_APP.gs) as the Apps Script web app code, then deploy it as a web app accessible to anyone.
 
+Deploy settings:
+
+- Execute as: `Me`
+- Who has access: `Anyone`
+- After every code change, create a new deployment or edit the existing deployment version.
+
 The frontend writes records with `POST` and reads cloud history with:
 
 ```text
