@@ -82,13 +82,99 @@
           .filter((value) => Number.isFinite(value) && value >= min && value <= max);
       }
 
+      function stripNonMetricNumbers(text) {
+        return normalizeOcrText(text)
+          .replace(/\d{1,2}\s*:\s*\d{2}/g, " ")
+          .replace(/\d+\s*\/\s*\d+/g, " ");
+      }
+
+      function metricNumberCandidates(text, { min = 0, max = 99999 } = {}) {
+        const tokens = [...stripNonMetricNumbers(text).matchAll(/\d{1,5}(?:\.\d+)?/g)].map((match) => match[0]);
+        const candidates = [];
+        const seen = new Set();
+
+        const addCandidate = (raw, score) => {
+          const value = Number(raw);
+          if (!Number.isFinite(value) || value < min || value > max) return;
+          const key = String(Math.round(value));
+          if (seen.has(key)) return;
+          seen.add(key);
+          candidates.push({ value, score, length: String(raw).replace(/\D/g, "").length });
+        };
+
+        tokens.forEach((token) => addCandidate(token, token.replace(/\D/g, "").length));
+
+        for (let index = 0; index < tokens.length - 1; index += 1) {
+          const left = tokens[index];
+          const right = tokens[index + 1];
+          if (!/^\d+$/.test(left) || !/^\d+$/.test(right)) continue;
+          if (left.length > 2 || right.length > 3 || left.length + right.length > 5) continue;
+          addCandidate(left + right, left.length + right.length + 10);
+        }
+
+        for (let index = 0; index < tokens.length - 2; index += 1) {
+          const group = tokens.slice(index, index + 3);
+          if (!group.every((token) => /^\d+$/.test(token) && token.length <= 2)) continue;
+          const merged = group.join("");
+          if (merged.length > 5) continue;
+          addCandidate(merged, merged.length + 12);
+        }
+
+        return candidates.sort((a, b) => b.score - a.score || b.length - a.length || b.value - a.value).map((candidate) => candidate.value);
+      }
+
+      function firstMetricNumberFromLine(line, options) {
+        const candidates = metricNumberCandidates(line, options);
+        return candidates.length > 0 ? String(Math.round(candidates[0])) : "";
+      }
+
+      function isMetricBoundaryLine(line) {
+        return (
+          lineHasKeyword(line, [
+            "壓力指數",
+            "压力指数",
+            "壓力等級",
+            "压力等级",
+            "情緒反應靈活度",
+            "情绪反应灵活度",
+            "情緒靈活度",
+            "情绪灵活度",
+            "放鬆指數",
+            "放松指数",
+            "活力指數",
+            "活力指数",
+            "平均心跳",
+            "平均心率",
+            "量測時間",
+            "測量時間",
+            "测量时间",
+            "紀錄異常",
+            "记录异常",
+            "stress",
+            "flexibility",
+            "relaxation",
+            "vitality",
+            "heart rate",
+            "duration",
+          ]) ||
+          lineHasAllParts(line, ["情緒", "反應", "活"]) ||
+          lineHasAllParts(line, ["情绪", "反应", "活"])
+        );
+      }
+
       function firstNumberNearKeywords(lines, keywords, options) {
         for (let index = 0; index < lines.length; index += 1) {
           if (!lineHasKeyword(lines[index], keywords)) continue;
 
-          const windowText = lines.slice(index, index + 4).join(" ");
-          const numbers = numbersFromText(windowText, options);
-          if (numbers.length > 0) return String(Math.round(numbers[0]));
+          const sameLineValue = firstMetricNumberFromLine(lines[index], options);
+          if (sameLineValue) return sameLineValue;
+
+          for (let offset = 1; offset < 4; offset += 1) {
+            const nextLine = lines[index + offset];
+            if (!nextLine || isMetricBoundaryLine(nextLine)) break;
+            const nearbyValue = firstMetricNumberFromLine(nextLine, options);
+            if (nearbyValue) return nearbyValue;
+          }
         }
         return "";
       }
@@ -97,24 +183,47 @@
         for (let index = 0; index < lines.length; index += 1) {
           if (!matcher(lines[index])) continue;
 
-          const windowText = lines.slice(index, index + 4).join(" ");
-          const numbers = numbersFromText(windowText, options);
-          if (numbers.length > 0) return String(Math.round(numbers[0]));
+          const sameLineValue = firstMetricNumberFromLine(lines[index], options);
+          if (sameLineValue) return sameLineValue;
+
+          for (let offset = 1; offset < 4; offset += 1) {
+            const nextLine = lines[index + offset];
+            if (!nextLine || isMetricBoundaryLine(nextLine)) break;
+            const nearbyValue = firstMetricNumberFromLine(nextLine, options);
+            if (nearbyValue) return nearbyValue;
+          }
         }
         return "";
       }
 
       function inferByNumberSequence(text, parsed) {
         const lines = getOcrLines(text);
+        const filledMetricLine = (line) => {
+          if (parsed.stressIndex && lineHasKeyword(line, ["壓力指數", "压力指数", "壓力", "压力", "stress"])) return true;
+          if (
+            parsed.emotionalFlexibility &&
+            (lineHasKeyword(line, ["情緒反應靈活度", "情绪反应灵活度", "情緒靈活度", "情绪灵活度", "靈活度", "灵活度", "flexibility"]) ||
+              lineHasAllParts(line, ["情緒", "反應", "活"]) ||
+              lineHasAllParts(line, ["情绪", "反应", "活"]))
+          )
+            return true;
+          if (parsed.relaxationIndex && lineHasKeyword(line, ["放鬆指數", "放松指数", "放鬆", "放松", "relaxation", "relax"])) return true;
+          if (parsed.vitalityIndex && lineHasKeyword(line, ["活力指數", "活力指数", "活力", "vitality", "energy", "tp"])) return true;
+          if (parsed.averageHeartRate && lineHasKeyword(line, ["平均心跳", "平均心率", "心跳", "心率", "heart rate", "hr"])) return true;
+          return false;
+        };
         const usedValues = new Set(
           ["stressIndex", "emotionalFlexibility", "relaxationIndex", "vitalityIndex", "averageHeartRate"]
             .map((key) => toNumber(parsed[key]))
             .filter((value) => value !== null),
         );
         const values = lines
+          .filter((line) => !/^\d+\s*[).、]/.test(line))
           .filter((line) => !/\d{1,2}:\d{2}/.test(line))
+          .filter((line) => !/\d+\s*\/\s*\d+/.test(line))
           .filter((line) => !/20\d{2}[/-]\d{1,2}[/-]\d{1,2}/.test(line))
-          .flatMap((line) => numbersFromText(line, { min: 0, max: 99999 }))
+          .filter((line) => !filledMetricLine(line))
+          .flatMap((line) => metricNumberCandidates(line, { min: 0, max: 99999 }))
           .filter((value) => {
             if (!usedValues.has(value)) return true;
             usedValues.delete(value);
@@ -130,7 +239,7 @@
 
         return {
           ...parsed,
-          stressIndex: parsed.stressIndex || nextValue((value) => value <= 300),
+          stressIndex: parsed.stressIndex || nextValue((value) => value <= 9999),
           emotionalFlexibility: parsed.emotionalFlexibility || nextValue((value) => value <= 100),
           relaxationIndex: parsed.relaxationIndex || nextValue((value) => value <= 100),
           vitalityIndex: parsed.vitalityIndex || nextValue((value) => value >= 100),
@@ -141,7 +250,7 @@
         const lines = getOcrLines(text);
         const joined = lines.join(" ");
         const parsed = {
-          stressIndex: firstNumberNearKeywords(lines, ["壓力指數", "压力指数", "壓力", "压力", "stress"], { min: 0, max: 300 }),
+          stressIndex: firstNumberNearKeywords(lines, ["壓力指數", "压力指数", "壓力", "压力", "stress"], { min: 0, max: 9999 }),
           emotionalFlexibility: firstNumberNearMatcher(
             lines,
             (line) =>
