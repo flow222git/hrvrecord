@@ -365,7 +365,7 @@
         },
       };
 
-      function normalizeRadarScore(key, value) {
+      function normalizeTrendScore(key, value) {
         const n = toNumber(value);
         if (n === null) return 0;
 
@@ -379,6 +379,16 @@
 
         if (key === "vitalityIndex") return clamp((n / 2500) * 100, 0, 100);
         return clamp(n, 0, 100);
+      }
+
+      function intervalRadarPosition(key, value) {
+        const evaluation = evaluateMetric(key, value);
+        return {
+          green: 92,
+          yellow: 58,
+          red: 28,
+          gray: 0,
+        }[evaluation.tone];
       }
 
       function metricToneColor(tone) {
@@ -400,7 +410,7 @@
           const y = center + Math.sin(angle) * radius;
           const labelX = center + Math.cos(angle) * (radius + 31);
           const labelY = center + Math.sin(angle) * (radius + 31);
-          const valueRadius = radius * (point.score / 100);
+          const valueRadius = radius * (point.position / 100);
           return {
             ...point,
             angle,
@@ -424,18 +434,18 @@
 
         return (
           <div className="grid gap-5 md:grid-cols-[280px_1fr] md:items-center">
-            <svg viewBox={`0 0 ${size} ${size}`} className="mx-auto h-72 w-full max-w-72" role="img" aria-label="HRV 四項指標雷達圖">
+            <svg viewBox={`0 0 ${size} ${size}`} className="mx-auto h-72 w-full max-w-72" role="img" aria-label="HRV 狀態區間圖">
               {rings.map((ring) => (
                 <polygon key={ring} points={ring} fill="none" stroke="#cbd5e1" strokeWidth="1" />
               ))}
               {axes.map((axis) => (
                 <line key={axis.key} x1={center} y1={center} x2={axis.x} y2={axis.y} stroke="#cbd5e1" strokeWidth="1" />
               ))}
-              <polygon points={polygon} fill="rgba(249, 115, 22, 0.22)" stroke="#f97316" strokeWidth="3" />
+              <polygon points={polygon} fill="rgba(15, 23, 42, 0.10)" stroke="#334155" strokeWidth="3" />
               {axes.map((axis) => (
                 <g key={axis.key}>
-                  <circle cx={axis.pointX} cy={axis.pointY} r="4" fill="#f97316" />
-                  <text x={axis.labelX} y={axis.labelY} textAnchor="middle" dominantBaseline="middle" className="fill-slate-600 text-[11px] font-bold">
+                  <circle cx={axis.pointX} cy={axis.pointY} r="4.5" fill={axis.color} />
+                  <text x={axis.labelX} y={axis.labelY} textAnchor="middle" dominantBaseline="middle" fill={axis.color} className="text-[11px] font-bold">
                     {axis.shortLabel}
                   </text>
                 </g>
@@ -443,13 +453,10 @@
             </svg>
             <div className="grid gap-3">
               {points.map((point) => (
-                <div key={point.key} className="rounded-2xl bg-slate-100 p-4">
+                <div key={point.key} className={`rounded-2xl border p-4 ${metricToneColor(point.evaluation.tone)}`}>
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-bold text-slate-700">{point.label}</p>
-                    <p className="text-lg font-bold text-slate-900">{Math.round(point.score)}</p>
-                  </div>
-                  <div className="mt-2 h-2 rounded-full bg-white">
-                    <div className="h-2 rounded-full bg-orange-500" style={{ width: `${point.score}%` }} />
+                    <p className="text-sm font-bold">{point.evaluation.level}</p>
                   </div>
                   <p className="mt-2 text-xs text-slate-500">原始值：{point.raw || "尚未輸入"}</p>
                 </div>
@@ -511,10 +518,10 @@
 
       function TrendChart({ records }) {
         const metrics = [
-          { key: "stressIndex", label: "壓力", color: "#ef4444", normalize: (value) => normalizeRadarScore("stressIndex", value) },
-          { key: "emotionalFlexibility", label: "情緒", color: "#8b5cf6", normalize: (value) => normalizeRadarScore("emotionalFlexibility", value) },
-          { key: "relaxationIndex", label: "放鬆", color: "#10b981", normalize: (value) => normalizeRadarScore("relaxationIndex", value) },
-          { key: "vitalityIndex", label: "活力", color: "#f97316", normalize: (value) => normalizeRadarScore("vitalityIndex", value) },
+          { key: "stressIndex", label: "壓力穩定", color: "#ef4444", normalize: (value) => normalizeTrendScore("stressIndex", value) },
+          { key: "emotionalFlexibility", label: "情緒韌性", color: "#8b5cf6", normalize: (value) => normalizeTrendScore("emotionalFlexibility", value) },
+          { key: "relaxationIndex", label: "放鬆恢復", color: "#10b981", normalize: (value) => normalizeTrendScore("relaxationIndex", value) },
+          { key: "vitalityIndex", label: "生理活力", color: "#f97316", normalize: (value) => normalizeTrendScore("vitalityIndex", value) },
           { key: "brsrTotal", label: "BSRS", color: "#0f172a", normalize: (value) => clamp(100 - (toNumber(value) || 0) * 5, 0, 100) },
         ];
         const width = 640;
@@ -863,18 +870,17 @@
         }, [form, history, metricCards]);
 
         const radarPoints = useMemo(
-          () => [
-            { key: "stressIndex", label: "壓力指數", shortLabel: "壓力", raw: form.stressIndex, score: normalizeRadarScore("stressIndex", form.stressIndex) },
-            {
-              key: "emotionalFlexibility",
-              label: "情緒靈活度",
-              shortLabel: "情緒",
-              raw: form.emotionalFlexibility,
-              score: normalizeRadarScore("emotionalFlexibility", form.emotionalFlexibility),
-            },
-            { key: "relaxationIndex", label: "放鬆指數", shortLabel: "放鬆", raw: form.relaxationIndex, score: normalizeRadarScore("relaxationIndex", form.relaxationIndex) },
-            { key: "vitalityIndex", label: "活力指數", shortLabel: "活力", raw: form.vitalityIndex, score: normalizeRadarScore("vitalityIndex", form.vitalityIndex) },
-          ],
+          () =>
+            [
+              { key: "stressIndex", label: "壓力穩定", shortLabel: "壓力穩定", raw: form.stressIndex, color: "#ef4444" },
+              { key: "emotionalFlexibility", label: "情緒韌性", shortLabel: "情緒韌性", raw: form.emotionalFlexibility, color: "#8b5cf6" },
+              { key: "relaxationIndex", label: "放鬆恢復", shortLabel: "放鬆恢復", raw: form.relaxationIndex, color: "#10b981" },
+              { key: "vitalityIndex", label: "生理活力", shortLabel: "生理活力", raw: form.vitalityIndex, color: "#f97316" },
+            ].map((point) => ({
+              ...point,
+              evaluation: evaluateMetric(point.key, point.raw),
+              position: intervalRadarPosition(point.key, point.raw),
+            })),
           [form],
         );
 
@@ -1246,10 +1252,10 @@
               </Panel>
 
               <Panel
-                title="四項平衡雷達圖"
-                subtitle="雷達圖使用標準化健康分數，不是原始數值。壓力採反向計分，其他三項採正向計分。"
+                title="狀態區間圖"
+                subtitle="依原始區間呈現四項狀態，不作精準分數解讀。"
                 icon={Activity}
-                badge={<span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-bold text-orange-600">0-100 標準化</span>}
+                badge={<span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">區間判讀</span>}
               >
                 <RadarChart points={radarPoints} />
               </Panel>
