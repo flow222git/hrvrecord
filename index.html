@@ -4,8 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HRV 測量截圖紀錄</title>
+    <link rel="preconnect" href="https://cdn.tailwindcss.com" />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+    <link rel="preconnect" href="https://unpkg.com" />
+    <link rel="preconnect" href="https://esm.sh" />
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script type="importmap">
       {
@@ -20,12 +23,20 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div style="min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #f5f5f4; color: #334155; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+        <div style="width: min(420px, 100%); border-radius: 28px; background: white; padding: 28px; text-align: center; box-shadow: 0 1px 6px rgba(15, 23, 42, 0.08);">
+          <div style="margin: 0 auto 14px; width: 52px; height: 52px; border-radius: 18px; background: #ffedd5; color: #f97316; display: grid; place-items: center; font-size: 24px; font-weight: 800;">HRV</div>
+          <h1 style="margin: 0; font-size: 22px; line-height: 1.3; color: #1e293b;">HRV 測量截圖紀錄</h1>
+          <p style="margin: 10px 0 0; font-size: 14px; line-height: 1.7; color: #64748b;">正在載入頁面，第一次開啟可能需要幾秒鐘。</p>
+        </div>
+      </div>
+    </div>
 
     <script type="text/babel" data-type="module">
       import React, { useMemo, useState } from "react";
       import { createRoot } from "react-dom/client";
-      import { Activity, BatteryCharging, Brain, Camera, CheckCircle2, Gauge, HeartPulse, LineChart, Loader2, Search, UploadCloud, AlertTriangle, Table2, UserPlus } from "lucide-react";
+      import { Activity, BatteryCharging, Brain, Camera, CheckCircle2, Gauge, HeartPulse, LineChart, Loader2, RefreshCw, Search, UploadCloud, AlertTriangle, Table2, UserPlus } from "lucide-react";
       import { motion } from "framer-motion";
 
       const WEB_APP_URL =
@@ -479,6 +490,29 @@
 
       const BRSR_SCORE_LABELS = ["完全沒有", "輕微", "中等程度", "厲害", "非常厲害"];
 
+      function createEmptyBrsr() {
+        return {
+          sleep: 0,
+          anxiety: 0,
+          anger: 0,
+          depression: 0,
+          inferiority: 0,
+          suicide: 0,
+        };
+      }
+
+      function createEmptyForm() {
+        return {
+          stressIndex: "",
+          emotionalFlexibility: "",
+          relaxationIndex: "",
+          vitalityIndex: "",
+          averageHeartRate: "",
+          duration: "",
+          note: "",
+        };
+      }
+
       function evaluateBrsr(brsr) {
         const total = BRSR_ITEMS.reduce((sum, item) => sum + Number(brsr[item.key] || 0), 0);
         const suicide = Number(brsr.suicide || 0);
@@ -763,7 +797,38 @@
         return `${better ? "優於" : "低於"}基準 ${Math.abs(percent)}%`;
       }
 
+      let tesseractLoadPromise = null;
+
+      function loadTesseract() {
+        if (window.Tesseract) return Promise.resolve(window.Tesseract);
+        if (tesseractLoadPromise) return tesseractLoadPromise;
+
+        tesseractLoadPromise = new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          const timeout = window.setTimeout(() => {
+            script.remove();
+            reject(new Error("OCR 模組載入逾時，請確認網路可連線至 jsDelivr 後再試。"));
+          }, 20000);
+
+          script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+          script.async = true;
+          script.onload = () => {
+            window.clearTimeout(timeout);
+            resolve(window.Tesseract);
+          };
+          script.onerror = () => {
+            window.clearTimeout(timeout);
+            reject(new Error("OCR 模組載入失敗，請確認網路可連線至 jsDelivr。"));
+          };
+          document.head.appendChild(script);
+        });
+
+        return tesseractLoadPromise;
+      }
+
       async function runOcr(file) {
+        await loadTesseract();
+
         if (!window.Tesseract) {
           throw new Error("OCR 模組尚未載入，請確認網路可連線至 jsDelivr。");
         }
@@ -803,17 +868,12 @@
           gender: "",
         });
         const [showProfileDetails, setShowProfileDetails] = useState(false);
+        const [profileCompleted, setProfileCompleted] = useState(false);
         const [historyEmail, setHistoryEmail] = useState("");
         const [cloudHistory, setCloudHistory] = useState([]);
         const [historySource, setHistorySource] = useState("local");
-        const [brsr, setBrsr] = useState({
-          sleep: 0,
-          anxiety: 0,
-          anger: 0,
-          depression: 0,
-          inferiority: 0,
-          suicide: 0,
-        });
+        const [brsr, setBrsr] = useState(createEmptyBrsr);
+        const [brsrCompleted, setBrsrCompleted] = useState(false);
         const [history, setHistory] = useState(() => {
           try {
             return JSON.parse(localStorage.getItem("hrvReadings") || "[]");
@@ -821,15 +881,7 @@
             return [];
           }
         });
-        const [form, setForm] = useState({
-          stressIndex: "",
-          emotionalFlexibility: "",
-          relaxationIndex: "",
-          vitalityIndex: "",
-          averageHeartRate: "",
-          duration: "",
-          note: "",
-        });
+        const [form, setForm] = useState(createEmptyForm);
 
         const canSave = useMemo(() => {
           return (
@@ -844,6 +896,7 @@
 
         function updateBrsrScore(key, score) {
           setBrsr((prev) => ({ ...prev, [key]: Number(score) }));
+          setBrsrCompleted(false);
         }
 
         const metricCards = useMemo(
@@ -906,9 +959,9 @@
 
         const displayedHistory = useMemo(() => (historySource === "cloud" ? cloudHistory : filteredHistory), [cloudHistory, filteredHistory, historySource]);
 
-        function saveProfile(value = email) {
+        function upsertProfile(value = email) {
           const nextEmail = value.trim();
-          if (!nextEmail) return;
+          if (!nextEmail || !profileCompleted) return;
           const nextProfile = {
             email: nextEmail,
             name: profile.name.trim(),
@@ -918,7 +971,6 @@
           const nextProfiles = [nextProfile, ...savedProfiles.filter((item) => item.email.toLowerCase() !== nextEmail.toLowerCase())].slice(0, 20);
           setSavedProfiles(nextProfiles);
           localStorage.setItem("hrvPatientProfiles", JSON.stringify(nextProfiles));
-          setMessage(`已儲存基本資料：${nextProfile.name || nextEmail}`);
         }
 
         function selectProfile(item) {
@@ -929,7 +981,28 @@
             gender: item.gender || "",
           });
           setShowProfileDetails(true);
+          setProfileCompleted(false);
           setHistoryEmail(item.email);
+        }
+
+        function resetCurrentSession() {
+          setEmail("user@example.com");
+          setMeasureDate(todayTaiwanDate());
+          setImageUrl((previousUrl) => {
+            if (previousUrl) URL.revokeObjectURL(previousUrl);
+            return "";
+          });
+          setOcrText("");
+          setForm(createEmptyForm());
+          setProfile({ name: "", birthDate: "", gender: "" });
+          setShowProfileDetails(false);
+          setProfileCompleted(false);
+          setBrsr(createEmptyBrsr());
+          setBrsrCompleted(false);
+          setHistoryEmail("");
+          setCloudHistory([]);
+          setHistorySource("local");
+          setMessage("已清除本次暫存資料，可開始下一位使用者。");
         }
 
         function loadCloudHistory() {
@@ -1008,9 +1081,9 @@
           const payload = {
             recordId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
             email: email.trim(),
-            patientName: profile.name.trim(),
-            patientBirthDate: profile.birthDate.trim(),
-            patientGender: profile.gender,
+            patientName: profileCompleted ? profile.name.trim() : "",
+            patientBirthDate: profileCompleted ? profile.birthDate.trim() : "",
+            patientGender: profileCompleted ? profile.gender : "",
             measureDate,
             stressIndex: form.stressIndex,
             emotionalFlexibility: form.emotionalFlexibility,
@@ -1023,14 +1096,14 @@
             assessmentLevel: assessment.level,
             assessmentObservation: assessment.observation,
             assessmentRecommendation: assessment.recommendation,
-            brsrSleep: brsr.sleep,
-            brsrAnxiety: brsr.anxiety,
-            brsrAnger: brsr.anger,
-            brsrDepression: brsr.depression,
-            brsrInferiority: brsr.inferiority,
-            brsrSuicide: brsr.suicide,
-            brsrTotal: brsrAssessment.total,
-            brsrLevel: brsrAssessment.level,
+            brsrSleep: brsrCompleted ? brsr.sleep : "",
+            brsrAnxiety: brsrCompleted ? brsr.anxiety : "",
+            brsrAnger: brsrCompleted ? brsr.anger : "",
+            brsrDepression: brsrCompleted ? brsr.depression : "",
+            brsrInferiority: brsrCompleted ? brsr.inferiority : "",
+            brsrSuicide: brsrCompleted ? brsr.suicide : "",
+            brsrTotal: brsrCompleted ? brsrAssessment.total : "",
+            brsrLevel: brsrCompleted ? brsrAssessment.level : "",
           };
 
           try {
@@ -1049,7 +1122,7 @@
             const nextHistory = [...history, { ...payload, savedAt: new Date().toISOString() }].slice(-30);
             setHistory(nextHistory);
             localStorage.setItem("hrvReadings", JSON.stringify(nextHistory));
-            saveProfile(payload.email);
+            upsertProfile(payload.email);
             setMessage("已送出至 Google Sheet。若表格沒有新增資料，請檢查 Apps Script 部署權限與 SHEET_NAME。");
           } catch (error) {
             setMessage("儲存失敗：" + (error.message || "未知錯誤"));
@@ -1062,14 +1135,25 @@
           <div className="min-h-screen bg-stone-100 px-4 py-6 text-slate-700">
             <div className="mx-auto max-w-3xl space-y-4">
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-[2rem] bg-white p-6 shadow-sm">
-                <div className="mb-5 flex items-center gap-3">
-                  <div className="rounded-2xl bg-orange-100 p-3 text-orange-500">
-                    <Table2 size={24} />
+                <div className="mb-5 flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="rounded-2xl bg-orange-100 p-3 text-orange-500">
+                      <Table2 size={24} />
+                    </div>
+                    <div className="min-w-0">
+                      <h1 className="text-2xl font-bold text-slate-800">HRV 測量截圖紀錄</h1>
+                      <p className="text-sm text-slate-500">上傳截圖後自動辨識，確認後寫入 Google Sheet</p>
+                    </div>
                   </div>
-                  <div>
-                    <h1 className="text-2xl font-bold text-slate-800">HRV 測量截圖紀錄</h1>
-                    <p className="text-sm text-slate-500">上傳截圖後自動辨識，確認後寫入 Google Sheet</p>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={resetCurrentSession}
+                    className="flex shrink-0 items-center gap-2 rounded-2xl bg-slate-100 px-3 py-2 text-sm font-bold text-slate-600 transition hover:bg-slate-200"
+                    title="清除本次暫存資料"
+                  >
+                    <RefreshCw size={16} />
+                    <span>Refresh</span>
+                  </button>
                 </div>
 
                 <label
@@ -1121,7 +1205,7 @@
                   <div>
                     <div className="mb-2 flex items-center justify-between gap-3">
                       <label className="block text-xs font-semibold uppercase text-slate-500">Email</label>
-                      {!showProfileDetails && <span className="text-xs font-semibold text-slate-400">單次使用可不建檔</span>}
+                      {!showProfileDetails && <span className="text-xs font-semibold text-slate-400">單次使用可不納入基本資料</span>}
                     </div>
                     <input
                       value={email}
@@ -1129,6 +1213,7 @@
                       onChange={(e) => {
                         const nextEmail = e.target.value;
                         setEmail(nextEmail);
+                        setProfileCompleted(false);
                         const matched = savedProfiles.find((item) => item.email.toLowerCase() === nextEmail.trim().toLowerCase());
                         if (matched) selectProfile(matched);
                       }}
@@ -1161,7 +1246,10 @@
                         <label className="mb-2 block text-xs font-semibold text-slate-500">姓名（暱稱）</label>
                         <input
                           value={profile.name}
-                          onChange={(e) => setProfile((prev) => ({ ...prev, name: e.target.value }))}
+                          onChange={(e) => {
+                            setProfile((prev) => ({ ...prev, name: e.target.value }));
+                            setProfileCompleted(false);
+                          }}
                           placeholder="例如：小安"
                           className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-400"
                         />
@@ -1171,7 +1259,10 @@
                         <input
                           type="date"
                           value={profile.birthDate}
-                          onChange={(e) => setProfile((prev) => ({ ...prev, birthDate: e.target.value }))}
+                          onChange={(e) => {
+                            setProfile((prev) => ({ ...prev, birthDate: e.target.value }));
+                            setProfileCompleted(false);
+                          }}
                           className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-400"
                         />
                       </div>
@@ -1182,7 +1273,10 @@
                             <button
                               key={item}
                               type="button"
-                              onClick={() => setProfile((prev) => ({ ...prev, gender: item === "未填" ? "" : item }))}
+                              onClick={() => {
+                                setProfile((prev) => ({ ...prev, gender: item === "未填" ? "" : item }));
+                                setProfileCompleted(false);
+                              }}
                               className={`rounded-2xl px-4 py-3 text-sm font-bold transition ${
                                 (profile.gender || "未填") === item ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                               }`}
@@ -1193,9 +1287,19 @@
                         </div>
                       </div>
                       <div className="md:col-span-2">
-                        <button type="button" onClick={() => saveProfile()} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-orange-500 px-4 py-3 text-sm font-bold text-white">
-                          <UserPlus size={16} /> 儲存基本資料
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProfileCompleted(true);
+                            setMessage("基本資料已標記完成，最後按下儲存時會一起寫入。");
+                          }}
+                          className={`flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold text-white ${
+                            profileCompleted ? "bg-emerald-600" : "bg-orange-500"
+                          }`}
+                        >
+                          <UserPlus size={16} /> {profileCompleted ? "基本資料已完成" : "填寫完畢"}
                         </button>
+                        <p className="mt-2 text-center text-xs text-slate-400">未按填寫完畢時，最後儲存不會寫入姓名、生日與性別。</p>
                       </div>
                     </>
                   )}
@@ -1350,10 +1454,10 @@
                 subtitle="請回想最近一週的主觀感受，0 代表完全沒有，4 代表非常厲害。"
                 icon={Brain}
                 badge={
-                  <div className={`rounded-2xl border px-4 py-3 text-right ${metricToneColor(brsrAssessment.tone)}`}>
-                    <p className="text-xs font-bold">總分</p>
+                  <div className={`rounded-2xl border px-4 py-3 text-right ${brsrCompleted ? metricToneColor(brsrAssessment.tone) : "border-slate-200 bg-slate-50 text-slate-500"}`}>
+                    <p className="text-xs font-bold">{brsrCompleted ? "已納入" : "未納入"}</p>
                     <p className="text-2xl font-bold text-slate-900">{brsrAssessment.total}</p>
-                    <p className="text-xs font-bold">{brsrAssessment.level}</p>
+                    <p className="text-xs font-bold">{brsrCompleted ? brsrAssessment.level : "需按填寫完畢"}</p>
                   </div>
                 }
               >
@@ -1405,6 +1509,18 @@
                   <p className="font-bold text-slate-900">{brsrAssessment.level}</p>
                   <p className="mt-1 text-slate-700">{brsrAssessment.meaning}</p>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBrsrCompleted(true);
+                    setMessage("BSRS 已標記完成，最後按下儲存時會一起寫入。");
+                  }}
+                  className={`mt-4 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold text-white ${brsrCompleted ? "bg-emerald-600" : "bg-orange-500"}`}
+                >
+                  <CheckCircle2 size={16} /> {brsrCompleted ? "BSRS 已完成" : "填寫完畢"}
+                </button>
+                <p className="mt-2 text-center text-xs text-slate-400">未按填寫完畢時，最後儲存不會寫入 BSRS 欄位。</p>
               </Panel>
 
               <Panel title="歷史趨勢區" subtitle="輸入 email 查詢本機或 Google Sheet 紀錄" icon={LineChart}>
