@@ -940,17 +940,6 @@
           [form],
         );
 
-        const intervalRows = useMemo(
-          () =>
-            ["stressIndex", "emotionalFlexibility", "relaxationIndex", "vitalityIndex"].map((key) => ({
-              key,
-              value: form[key],
-              evaluation: evaluateMetric(key, form[key]),
-              ...INTERVAL_DEFINITIONS[key],
-            })),
-          [form],
-        );
-
         const filteredHistory = useMemo(() => {
           const target = historyEmail.trim().toLowerCase();
           if (!target) return [];
@@ -1316,6 +1305,7 @@
                 <div className="grid gap-3 md:grid-cols-2">
                   {metricCards.map(({ label, key, icon: Icon }) => {
                     const evaluation = ["averageHeartRate", "duration"].includes(key) ? null : evaluateMetric(key, form[key]);
+                    const interval = INTERVAL_DEFINITIONS[key];
 
                     return (
                       <div key={key} className="rounded-2xl bg-slate-100 p-4">
@@ -1334,6 +1324,23 @@
                             <p className="font-bold">{evaluation.level}</p>
                             <p className="mt-1 leading-relaxed">{evaluation.meaning}</p>
                           </div>
+                        )}
+                        {interval && (
+                          <details className="mt-3 text-xs text-slate-500">
+                            <summary className="cursor-pointer font-bold text-slate-600">查看區間</summary>
+                            <div className="mt-2 grid gap-2">
+                              {interval.bands.map((band) => (
+                                <div key={`${key}-${band.range}`} className={`rounded-xl border px-3 py-2 ${metricToneColor(band.tone)}`}>
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span className="font-bold">{band.range}</span>
+                                    <span className="font-bold">{band.label}</span>
+                                  </div>
+                                  <p className="mt-1 leading-relaxed text-slate-600">{band.note}</p>
+                                </div>
+                              ))}
+                              <p className="pt-1 text-slate-400">來源：{interval.source}</p>
+                            </div>
+                          </details>
                         )}
                       </div>
                     );
@@ -1365,39 +1372,6 @@
                 badge={<span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">區間判讀</span>}
               >
                 <RadarChart points={radarPoints} />
-              </Panel>
-
-              <Panel title="區間查詢" subtitle="壓力指數採 Eureka 官網公開區間；其餘三項目前採用此工具內建判讀規則。" icon={Gauge}>
-                <div className="space-y-3">
-                  {intervalRows.map((row) => (
-                    <details key={row.key} className={`rounded-2xl border p-4 ${metricToneColor(row.evaluation.tone)}`}>
-                      <summary className="cursor-pointer list-none">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-bold text-slate-900">{row.label}</p>
-                            <p className="mt-1 text-xs text-slate-500">{row.direction}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xl font-bold text-slate-900">{row.value || "—"}</p>
-                            <p className="text-xs font-bold">{row.evaluation.level}</p>
-                          </div>
-                        </div>
-                      </summary>
-                      <div className="mt-4 grid gap-2">
-                        {row.bands.map((band) => (
-                          <div key={`${row.key}-${band.range}`} className={`rounded-xl border px-3 py-2 text-xs ${metricToneColor(band.tone)}`}>
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="font-bold">{band.range}</span>
-                              <span className="font-bold">{band.label}</span>
-                            </div>
-                            <p className="mt-1 leading-relaxed text-slate-600">{band.note}</p>
-                          </div>
-                        ))}
-                        <p className="pt-1 text-xs text-slate-400">來源：{row.source}</p>
-                      </div>
-                    </details>
-                  ))}
-                </div>
               </Panel>
 
               <Panel
